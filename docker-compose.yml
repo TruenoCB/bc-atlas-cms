@@ -1,0 +1,80 @@
+name: bc-atlas-cms
+
+services:
+  app:
+    image: "${APP_IMAGE:-bc-atlas-cms}:${APP_TAG:-local}"
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_VERSION: "${APP_VERSION:-dev}"
+    restart: unless-stopped
+    ports:
+      - "${APP_BIND:-0.0.0.0}:${APP_PORT:-8080}:8080"
+    environment:
+      HTTP_ADDR: ":8080"
+      WEB_ROOT: "/app/web"
+      DATABASE_DSN: "${MYSQL_USER:-bc}:${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}@tcp(mysql:3306)/${MYSQL_DATABASE:-bc_cms}?parseTime=true&charset=utf8mb4&collation=utf8mb4_0900_ai_ci"
+      S3_ENDPOINT: "minio:9000"
+      S3_ACCESS_KEY: "${MINIO_ROOT_USER:-bc-minio}"
+      S3_SECRET_KEY: "${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}"
+      S3_BUCKET: "${S3_BUCKET:-bc-content}"
+      S3_SECURE: "false"
+      S3_PUBLIC_URL: "/media"
+      PUBLIC_BASE_URL: "${PUBLIC_BASE_URL:-http://localhost:8080}"
+      ADMIN_EMAIL: "${ADMIN_EMAIL:?Set ADMIN_EMAIL in .env}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}"
+      ADMIN_DISPLAY_NAME: "${ADMIN_DISPLAY_NAME:-B.C}"
+      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 15s
+
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: "${MYSQL_DATABASE:-bc_cms}"
+      MYSQL_USER: "${MYSQL_USER:-bc}"
+      MYSQL_PASSWORD: "${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}"
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}"
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci"]
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 4s
+      retries: 24
+      start_period: 20s
+
+  minio:
+    image: "${MINIO_IMAGE:-minio/minio:RELEASE.2025-06-13T11-33-47Z}"
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "${MINIO_BIND:-127.0.0.1}:${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_BIND:-127.0.0.1}:${MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:-bc-minio}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/ready >/dev/null"]
+      interval: 5s
+      timeout: 4s
+      retries: 24
+      start_period: 15s
+
+volumes:
+  mysql-data:
+  minio-data:

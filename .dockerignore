@@ -1,0 +1,9 @@
+.git
+node_modules
+dist
+.npm-cache
+.env
+.env.all-in-one
+.env.middleware
+design
+*.log

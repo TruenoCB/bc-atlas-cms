@@ -1,0 +1,39 @@
+name: bc-atlas-cms-middleware
+
+services:
+  middleware:
+    image: "${BASE_IMAGE:-bc-atlas-cms-base}:${BASE_TAG:-2026.08.12}"
+    build:
+      context: .
+      dockerfile: Dockerfile.base
+      args:
+        BASE_VERSION: "${BASE_VERSION:-2026.08.12}"
+        MYSQL_IMAGE: "${MYSQL_IMAGE:-mysql:8.4}"
+        NODE_IMAGE: "${NODE_IMAGE:-node:24.18.1-bookworm-slim}"
+        GO_IMAGE: "${GO_IMAGE:-golang:1.24.8-bookworm}"
+        MINIO_SOURCE_REPOSITORY: "${MINIO_SOURCE_REPOSITORY:-https://github.com/minio/minio.git}"
+        MINIO_SOURCE_REF: "${MINIO_SOURCE_REF:-7aac2a2c5b7c882e68c1ce017d8256be2feea27f}"
+    init: true
+    restart: unless-stopped
+    ports:
+      - "${MYSQL_BIND:-127.0.0.1}:${MYSQL_PORT:-3306}:3306"
+      - "${MINIO_BIND:-127.0.0.1}:${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_BIND:-127.0.0.1}:${MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      MYSQL_DATABASE: "${MYSQL_DATABASE:-bc_cms}"
+      MYSQL_USER: "${MYSQL_USER:-bc}"
+      MYSQL_PASSWORD: "${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env.middleware}"
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env.middleware}"
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env.middleware}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env.middleware}"
+    volumes:
+      - middleware-data:/data
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+      - /var/lib/mysql:size=16m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 45s
+
+volumes:
+  middleware-data:
