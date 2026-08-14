@@ -1,0 +1,48 @@
+ARG APP_VERSION=dev
+ARG BASE_IMAGE_REF=bc-atlas-cms-base:2026.08.12
+
+FROM ${BASE_IMAGE_REF} AS web-build
+WORKDIR /src
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY index.html vite.config.mjs ./
+COPY src ./src
+COPY public ./public
+COPY scripts ./scripts
+COPY worker ./worker
+RUN npm run build
+
+FROM ${BASE_IMAGE_REF} AS api-build
+ARG APP_VERSION
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY server ./server
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/bc-cms ./server/cmd/api
+
+FROM ${BASE_IMAGE_REF}
+ARG APP_VERSION
+LABEL org.opencontainers.image.title="B.C Atlas CMS All-in-One" \
+      org.opencontainers.image.description="Single-container B.C application, MySQL, and MinIO deployment" \
+      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.source="https://github.com/bc-dev/bc-atlas-cms"
+
+WORKDIR /app
+COPY --from=api-build /out/bc-cms /app/bc-cms
+COPY --from=web-build /src/dist/client /app/web
+COPY deploy/all-in-one-entrypoint.sh /usr/local/bin/bc-all-in-one-entrypoint
+COPY deploy/all-in-one-healthcheck.sh /usr/local/bin/bc-all-in-one-healthcheck
+
+RUN chmod 0755 \
+      /app/bc-cms \
+      /usr/local/bin/minio \
+      /usr/local/bin/bc-all-in-one-entrypoint \
+      /usr/local/bin/bc-all-in-one-healthcheck \
+    && mkdir -p /data/mysql /data/minio \
+    && chown -R mysql:mysql /data /app
+
+VOLUME ["/data"]
+EXPOSE 8080 3306 9000 9001
+STOPSIGNAL SIGTERM
+HEALTHCHECK --interval=10s --timeout=4s --start-period=45s --retries=12 CMD ["/usr/local/bin/bc-all-in-one-healthcheck"]
+ENTRYPOINT ["/usr/local/bin/bc-all-in-one-entrypoint"]

@@ -1,0 +1,43 @@
+name: bc-atlas-cms-all-in-one
+
+services:
+  bc:
+    image: "${AIO_IMAGE:-bc-atlas-cms-all-in-one}:${AIO_TAG:-local}"
+    build:
+      context: .
+      dockerfile: Dockerfile.all-in-one
+      args:
+        APP_VERSION: "${APP_VERSION:-dev}"
+        BASE_IMAGE_REF: "${BASE_IMAGE:-bc-atlas-cms-base}:${BASE_TAG:-2026.08.12}"
+    init: true
+    restart: unless-stopped
+    ports:
+      - "${APP_BIND:-0.0.0.0}:${APP_PORT:-8080}:8080"
+      - "${MYSQL_BIND:-127.0.0.1}:${MYSQL_PORT:-3306}:3306"
+      - "${MINIO_BIND:-127.0.0.1}:${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_BIND:-127.0.0.1}:${MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      MYSQL_DATABASE: "${MYSQL_DATABASE:-bc_cms}"
+      MYSQL_USER: "${MYSQL_USER:-bc}"
+      MYSQL_PASSWORD: "${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env.all-in-one}"
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env.all-in-one}"
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:-bc-minio}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env.all-in-one}"
+      S3_BUCKET: "${S3_BUCKET:-bc-content}"
+      PUBLIC_BASE_URL: "${PUBLIC_BASE_URL:-http://localhost:8080}"
+      ADMIN_EMAIL: "${ADMIN_EMAIL:?Set ADMIN_EMAIL in .env.all-in-one}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env.all-in-one}"
+      ADMIN_DISPLAY_NAME: "${ADMIN_DISPLAY_NAME:-B.C}"
+      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+    volumes:
+      - all-in-one-data:/data
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+      # The inherited MySQL image volume is unused because the real datadir is /data/mysql.
+      - /var/lib/mysql:size=16m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 45s
+
+volumes:
+  all-in-one-data:

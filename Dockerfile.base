@@ -1,0 +1,95 @@
+ARG MYSQL_IMAGE=mysql:8.4
+ARG NODE_IMAGE=node:24.18.1-bookworm-slim
+ARG GO_IMAGE=golang:1.24.8-bookworm
+
+FROM --platform=$BUILDPLATFORM ${GO_IMAGE} AS minio-source-build
+ARG MINIO_SOURCE_REPOSITORY=https://github.com/minio/minio.git
+ARG MINIO_SOURCE_REF=7aac2a2c5b7c882e68c1ce017d8256be2feea27f
+ARG TARGETOS
+ARG TARGETARCH
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates git tar \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src/minio
+RUN git init \
+    && git remote add origin "${MINIO_SOURCE_REPOSITORY}" \
+    && git fetch --depth=1 origin "${MINIO_SOURCE_REF}" \
+    && git checkout --detach FETCH_HEAD \
+    && test "$(git rev-parse HEAD)" = "${MINIO_SOURCE_REF}" \
+    && test "$(sed -n 's/^toolchain //p' go.mod)" = 'go1.24.8'
+RUN go mod download \
+    && MINIO_LDFLAGS="$(go run buildscripts/gen-ldflags.go)" \
+    && CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" go build -tags kqueue -trimpath \
+      -ldflags "${MINIO_LDFLAGS}" -o /out/minio . \
+    && tar --exclude=.git -czf "/out/minio-source-${MINIO_SOURCE_REF}.tar.gz" . \
+    && cp LICENSE /out/MINIO-LICENSE
+
+FROM ${NODE_IMAGE} AS node-toolchain
+FROM ${GO_IMAGE} AS go-toolchain
+
+FROM ${MYSQL_IMAGE}
+ARG BASE_VERSION=2026.08.12
+ARG NODE_VERSION=24.18.1
+ARG GO_VERSION=1.24.8
+ARG MINIO_SOURCE_REPOSITORY=https://github.com/minio/minio.git
+ARG MINIO_SOURCE_REF=7aac2a2c5b7c882e68c1ce017d8256be2feea27f
+
+LABEL org.opencontainers.image.title="B.C CMS Toolchain and Middleware Base" \
+      org.opencontainers.image.description="MySQL 8.4, Node.js, Go, and source-built MinIO base image" \
+      org.opencontainers.image.version="${BASE_VERSION}" \
+      org.opencontainers.image.source="https://github.com/bc-dev/bc-atlas-cms" \
+      org.opencontainers.image.licenses="GPL-2.0-only AND AGPL-3.0-only AND MIT AND BSD-3-Clause" \
+      io.bc.base.mysql="8.4" \
+      io.bc.base.node="${NODE_VERSION}" \
+      io.bc.base.go="${GO_VERSION}" \
+      io.bc.base.minio.source="${MINIO_SOURCE_REPOSITORY}" \
+      io.bc.base.minio.commit="${MINIO_SOURCE_REF}"
+
+RUN microdnf install -y gcc gcc-c++ git make python3 tar \
+    && microdnf clean all
+
+# Copy only the Node toolchain paths so the Node image's docker-entrypoint.sh
+# cannot replace the inherited official MySQL entrypoint.
+COPY --from=node-toolchain /usr/local/bin/node /usr/local/bin/node
+COPY --from=node-toolchain /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=node-toolchain /usr/local/include/node /usr/local/include/node
+COPY --from=go-toolchain /usr/local/go /usr/local/go
+COPY --from=minio-source-build /out/minio /usr/local/bin/minio
+COPY --from=minio-source-build /out/MINIO-LICENSE /usr/share/licenses/minio/LICENSE
+COPY --from=minio-source-build /out/minio-source-*.tar.gz /usr/share/minio/source.tar.gz
+COPY deploy/init-middleware-env.sh /usr/local/bin/bc-middleware-config
+COPY deploy/middleware-entrypoint.sh /usr/local/bin/bc-middleware-entrypoint
+COPY deploy/middleware-healthcheck.sh /usr/local/bin/bc-middleware-healthcheck
+
+ENV PATH="/usr/local/go/bin:/root/go/bin:${PATH}" \
+    GOPATH=/root/go \
+    CGO_ENABLED=0
+
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+    && chmod 0755 \
+      /usr/local/bin/node \
+      /usr/local/bin/minio \
+      /usr/local/bin/bc-middleware-config \
+      /usr/local/bin/bc-middleware-entrypoint \
+      /usr/local/bin/bc-middleware-healthcheck \
+    && printf '%s\n' \
+      "base.version=${BASE_VERSION}" \
+      'mysql.version=8.4' \
+      "node.version=${NODE_VERSION}" \
+      "go.version=${GO_VERSION}" \
+      "minio.source=${MINIO_SOURCE_REPOSITORY}" \
+      "minio.commit=${MINIO_SOURCE_REF}" \
+      > /etc/bc-base-release \
+    && test "$(node --version)" = "v${NODE_VERSION}" \
+    && npm --version \
+    && go version | grep -F "go${GO_VERSION}" \
+    && mysqld --version \
+    && minio --version
+
+VOLUME ["/data"]
+EXPOSE 3306 9000 9001
+STOPSIGNAL SIGTERM
+HEALTHCHECK --interval=10s --timeout=4s --start-period=45s --retries=12 CMD ["/usr/local/bin/bc-middleware-healthcheck"]
+ENTRYPOINT ["/usr/local/bin/bc-middleware-entrypoint"]

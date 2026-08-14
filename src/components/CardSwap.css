@@ -1,0 +1,4 @@
+.card-swap { position:relative; perspective:1000px; overflow:visible; }
+.card-swap__card { position:absolute; top:50%; left:50%; margin:0; border:1px solid var(--line); border-radius:8px; background:#0b0c0f; transform-style:preserve-3d; backface-visibility:hidden; will-change:transform; overflow:hidden; }
+@media (max-width:820px) { .card-swap { transform:scale(.92); transform-origin:center top; } }
+@media (max-width:520px) { .card-swap { transform:scale(.88); transform-origin:center top; } }

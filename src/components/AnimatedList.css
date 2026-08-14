@@ -1,0 +1,3 @@
+.animated-list { min-width:0; }
+.animated-list__row { margin:0; }
+@media (prefers-reduced-motion: reduce) { .animated-list__row { opacity:1 !important; transform:none !important; } }
