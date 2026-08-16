@@ -208,8 +208,8 @@ docker compose \
   run --rm dev
 ~~~
 
-这个 Compose 只定义编译容器，没有端口、没有 `/data` 数据卷，也不会启动
-MySQL、MinIO 或 Go API。默认使用最终镜像
+这个 Compose 只定义编译容器，没有端口；它以只读方式挂载运行时 `/data`
+数据卷，也不会启动 MySQL、MinIO 或 Go API。默认使用最终镜像
 `bc-atlas-cms-all-in-one:2026.08.16-storage`；更换开发镜像时可以覆盖：
 
 ~~~bash

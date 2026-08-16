@@ -13,11 +13,16 @@ services:
       CGO_ENABLED: "0"
     volumes:
       - .:/workspace
+      # The runtime data is mounted read-only for inspection and backup work.
+      # It is the same named volume used by docker-compose.all-in-one.yml.
+      - runtime-data:/data:ro
       - go-mod-cache:/go/pkg/mod
       - go-build-cache:/root/.cache/go-build
       - npm-cache:/root/.npm
 
 volumes:
+  runtime-data:
+    name: "${AIO_DATA_VOLUME_NAME:-bc-atlas-cms-all-in-one_all-in-one-data}"
   go-mod-cache:
   go-build-cache:
   npm-cache:

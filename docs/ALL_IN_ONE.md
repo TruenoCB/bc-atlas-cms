@@ -112,7 +112,28 @@ docker compose \
 ```
 
 The equivalent `docker run` form is also supported, but the Compose file keeps
-the workspace and dependency caches consistent between sessions.
+the workspace and dependency caches consistent between sessions. It also mounts
+the All-in-One runtime data volume at `/data` as read-only, so the development
+container can inspect or back up the current MySQL and MinIO files without
+starting either middleware service.
+
+The default shared volume name is:
+
+```text
+bc-atlas-cms-all-in-one_all-in-one-data
+```
+
+If the deployment uses a custom volume name, set the same value in both Compose
+commands:
+
+```bash
+AIO_DATA_VOLUME_NAME=bc-production-data \
+docker compose -f docker-compose.dev.yml run --rm dev
+```
+
+Do not write directly to `/data/mysql` or `/data/minio` while the runtime
+container is active. Use MySQL-aware dumps and MinIO/S3 operations for backups
+and migrations.
 
 Inside the container, change code and run the checks manually:
 
