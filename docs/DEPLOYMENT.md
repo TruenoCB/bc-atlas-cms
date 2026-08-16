@@ -69,6 +69,22 @@ This first builds the reusable `Dockerfile.base` containing MySQL 8.4, Node/npm,
 
 See [Base image](BASE_IMAGE.md) for reproducible compilation and registry publication. See [All-in-one container deployment](ALL_IN_ONE.md) for credentials, port selection, data layout, backup boundaries, and the Nginx decision.
 
+### Starting an imported release image
+
+If the target machine already has the final image loaded, do not run the build
+path. Set `AIO_TAG` to the imported tag (for example,
+`2026.08.16-storage`) in `.env.all-in-one`, then run:
+
+```bash
+make all-in-one-start
+```
+
+This invokes Compose with `--no-build`, starts the MySQL, MinIO, and B.C
+processes inside the All-in-One container, waits for `/api/health`, and keeps
+the named `all-in-one-data` volume. The target machine needs the Compose file,
+the deployment script, and the private environment file; it does not need the
+source tree or Node/Go toolchains for this path.
+
 ## Public access and tunnels
 
 Set these before exposing the stack:

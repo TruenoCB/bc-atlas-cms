@@ -25,13 +25,88 @@ volume  volume                    ├── mysql/ structured data
 
 All-in-one has deliberately coupled upgrades, restarts, CPU/memory limits, and failure recovery. It is not suitable for HA or horizontal scaling. A single container failure stops all three processes. Keep external backups even though both data directories share one named volume.
 
-## One-command start
+## Choose the startup path
+
+There are two valid paths:
+
+| Situation | Command | Builds the image? |
+| --- | --- | --- |
+| The target machine already loaded a release image | `make all-in-one-start` | No |
+| The target machine has the source checkout and should compile | `make all-in-one-deploy` | Yes |
+
+The image-only path is the one to use after importing
+`bc-atlas-cms-all-in-one:2026.08.16-storage`. It still needs the Compose file and a
+private `.env.all-in-one` on the target machine; the image itself does not contain
+deployment passwords or host port settings.
+
+## Start an already-loaded image
+
+Copy these files from the repository to the target machine:
+
+```text
+docker-compose.all-in-one.yml
+scripts/deploy-all-in-one.sh
+Makefile
+.env.all-in-one.example
+```
+
+Create the private configuration:
+
+```bash
+cp .env.all-in-one.example .env.all-in-one
+chmod 600 .env.all-in-one
+```
+
+Set at least these values in `.env.all-in-one`:
+
+```dotenv
+AIO_IMAGE=bc-atlas-cms-all-in-one
+AIO_TAG=2026.08.16-storage
+APP_BIND=127.0.0.1
+APP_PORT=8080
+PUBLIC_BASE_URL=http://localhost:8080
+COOKIE_SECURE=false
+
+MYSQL_PASSWORD=generate-a-long-private-value
+MYSQL_ROOT_PASSWORD=generate-a-different-private-value
+MINIO_ROOT_PASSWORD=generate-a-different-private-value
+ADMIN_EMAIL=owner@example.com
+ADMIN_PASSWORD=generate-a-long-private-value
+```
+
+Use different values for the MySQL application user, MySQL root, MinIO, and the
+B.C owner account. Do not commit this file or put it in a Docker build argument.
+
+Start without rebuilding:
+
+```bash
+make all-in-one-start
+```
+
+The equivalent explicit command is:
+
+```bash
+docker compose \
+  --env-file .env.all-in-one \
+  -f docker-compose.all-in-one.yml \
+  up -d --no-build --remove-orphans
+```
+
+`--no-build` is important: it guarantees that Compose uses the image already
+loaded on the machine instead of trying to compile a new one.
+
+## One-command build and start
 
 ```bash
 make all-in-one-deploy
 ```
 
-The first run creates `.env.all-in-one` with mode `0600`, generates random hexadecimal secrets, builds and verifies `Dockerfile.base`, builds `Dockerfile.all-in-one`, starts the container, waits for `/api/health`, and prints the generated owner password once.
+This source-build path creates `.env.all-in-one` with mode `0600`, generates
+random hexadecimal secrets, builds and verifies `Dockerfile.base`, builds
+`Dockerfile.all-in-one`, starts the container, waits for `/api/health`, and
+prints the generated owner password once. Do not use it on a machine that only
+has the imported release image unless the complete source checkout and build
+dependencies are also present.
 
 Useful commands:
 
@@ -42,6 +117,29 @@ make all-in-one-down
 ```
 
 `make all-in-one-down` preserves the `all-in-one-data` named volume. Do not add `-v` unless both MySQL and MinIO data should be permanently deleted.
+
+## Startup sequence and first-run data
+
+For the imported image, the operational order is:
+
+1. copy the Compose files and create `.env.all-in-one`
+2. choose the host application and maintenance ports
+3. set the MySQL, MinIO, and B.C administrator credentials
+4. run `make all-in-one-start`
+5. wait for `/api/health` and inspect `make all-in-one-status`
+6. run content migration/reindex only if this is an existing data set
+
+The All-in-One entrypoint starts MySQL, waits for it, starts MinIO, waits for
+its readiness endpoint, and then starts the Go application. A fresh database
+gets the normal SQL schema migrations during application startup. The
+`bc-content-storage` commands are for moving legacy inline Markdown into
+MinIO, rebuilding the MySQL search projection, and verifying object hashes;
+they are not required for an empty new installation.
+
+Passwords in `.env.all-in-one` are used on first initialization. Changing an
+environment value later does not rewrite credentials already stored in an
+existing `all-in-one-data` volume; rotate credentials inside the service or
+perform a planned reinitialization after a backup.
 
 Build only:
 
@@ -100,9 +198,13 @@ The left side is the host listener; the container ports remain fixed at `8080`, 
 
 Use `APP_BIND=127.0.0.1` when a local tunnel or reverse proxy is the only public ingress. Only set `APP_BIND=0.0.0.0` when direct LAN access is intentional. Keep MySQL and both MinIO ports on `127.0.0.1`; do not expose or forward them to the public internet.
 
-After an edit, apply the configuration with:
+After an edit, apply the configuration with the command matching your path:
 
 ```bash
+# Imported image:
+make all-in-one-start
+
+# Source build:
 make all-in-one-deploy
 ```
 

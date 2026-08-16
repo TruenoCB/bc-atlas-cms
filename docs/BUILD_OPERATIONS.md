@@ -218,18 +218,41 @@ docker run --rm --entrypoint bash \
 
 ~~~dotenv
 AIO_IMAGE=bc-atlas-cms-all-in-one
-AIO_TAG=2026.08.16
+AIO_TAG=2026.08.16-storage
 BASE_IMAGE=bc-atlas-cms-base
 BASE_TAG=2026.08.12
 ~~~
 
-启动：
+如果使用已经导入的最终镜像，应使用 `all-in-one-start`。这条路径不需要
+源码、Node 或 Go，也不会重新编译：
+
+~~~bash
+make all-in-one-start
+~~~
+
+等价的 Compose 命令：
 
 ~~~bash
 docker compose \
   --env-file .env.all-in-one \
   -f docker-compose.all-in-one.yml \
-  up -d --no-build
+  up -d --no-build --remove-orphans
+~~~
+
+首次启动前的配置顺序是：
+
+1. 配置 `AIO_IMAGE`、`AIO_TAG` 和主机端口。
+2. 配置 `MYSQL_PASSWORD`、`MYSQL_ROOT_PASSWORD`、`MINIO_ROOT_PASSWORD`。
+3. 配置 `ADMIN_EMAIL` 和 `ADMIN_PASSWORD`。
+4. 启动 All-in-One 容器。
+5. 等待健康检查后，再按需执行内容迁移或索引重建。
+
+`AIO_TAG=2026.08.16-storage` 是当前最终镜像标签。
+
+如果使用源码重新编译，才运行下面的构建部署命令：
+
+~~~bash
+./scripts/deploy-all-in-one.sh deploy
 ~~~
 
 检查：

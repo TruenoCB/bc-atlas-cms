@@ -1,4 +1,4 @@
-.PHONY: dev api build test image base-image base-image-verify middleware-init middleware-up middleware-status middleware-logs middleware-down content-migrate content-reindex content-verify init deploy up status down logs all-in-one-image all-in-one-init all-in-one-deploy all-in-one-up all-in-one-status all-in-one-down all-in-one-logs
+.PHONY: dev api build test image base-image base-image-verify middleware-init middleware-up middleware-status middleware-logs middleware-down content-migrate content-reindex content-verify init deploy up status down logs all-in-one-image all-in-one-init all-in-one-start all-in-one-deploy all-in-one-up all-in-one-status all-in-one-down all-in-one-logs
 
 dev:
 	npm run dev -- --host 0.0.0.0 --port 4173 --strictPort
@@ -70,6 +70,9 @@ all-in-one-image:
 
 all-in-one-init:
 	./scripts/deploy-all-in-one.sh init
+
+all-in-one-start:
+	./scripts/deploy-all-in-one.sh start
 
 all-in-one-deploy:
 	./scripts/deploy-all-in-one.sh deploy

@@ -112,6 +112,15 @@ case "$ACTION" in
   init)
     initialize_env
     ;;
+  start)
+    initialize_env
+    load_env
+    require_docker
+    compose config --quiet
+    compose up -d --no-build --remove-orphans
+    wait_for_health
+    compose ps
+    ;;
   deploy|up)
     initialize_env
     load_env
@@ -142,7 +151,7 @@ case "$ACTION" in
     compose down
     ;;
   *)
-    printf 'Usage: %s {init|deploy|status|logs|stop}\n' "$0" >&2
+    printf 'Usage: %s {init|start|deploy|status|logs|stop}\n' "$0" >&2
     exit 2
     ;;
 esac
