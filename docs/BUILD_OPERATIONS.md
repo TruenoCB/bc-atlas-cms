@@ -199,18 +199,23 @@ docker run --rm --entrypoint bash \
 MySQL、MinIO 和 Go；编译时要覆盖入口为 `bash`，这样不会启动任何服务，也不
 需要配置中间件密码。
 
-源码建议保留在宿主机 Git 工作区，通过 bind mount 进入容器：
+源码建议保留在宿主机 Git 工作区，通过 `docker-compose.dev.yml` 的 bind
+mount 进入容器：
 
 ~~~bash
-docker run --rm -it \
-  --name bc-atlas-cms-dev \
-  --entrypoint bash \
-  -v "$PWD":/workspace \
-  -w /workspace \
-  -v bc-atlas-go-mod:/go/pkg/mod \
-  -v bc-atlas-go-build:/root/.cache/go-build \
-  -v bc-atlas-npm-cache:/root/.npm \
-  bc-atlas-cms-all-in-one:2026.08.16-storage
+docker compose \
+  -f docker-compose.dev.yml \
+  run --rm dev
+~~~
+
+这个 Compose 只定义编译容器，没有端口、没有 `/data` 数据卷，也不会启动
+MySQL、MinIO 或 Go API。默认使用最终镜像
+`bc-atlas-cms-all-in-one:2026.08.16-storage`；更换开发镜像时可以覆盖：
+
+~~~bash
+DEV_TAG=2026.08.17 docker compose \
+  -f docker-compose.dev.yml \
+  run --rm dev
 ~~~
 
 容器内的代码变更和验证：

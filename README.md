@@ -130,6 +130,7 @@ Dockerfile.base              Reproducible MySQL + Node + Go + source MinIO paren
 Dockerfile.all-in-one        Portable app + MySQL + MinIO image
 docker-compose.yml           App + MySQL + MinIO stack
 docker-compose.all-in-one.yml Single-container stack and shared data volume
+docker-compose.dev.yml       Source-mounted Node/Go development shell
 ```
 
 ## Why only MySQL and S3 for now

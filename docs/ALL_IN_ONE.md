@@ -106,16 +106,13 @@ the MySQL, MinIO, and Go runtime processes from starting during compilation.
 From the repository checkout:
 
 ```bash
-docker run --rm -it \
-  --name bc-atlas-cms-dev \
-  --entrypoint bash \
-  -v "$PWD":/workspace \
-  -w /workspace \
-  -v bc-atlas-go-mod:/go/pkg/mod \
-  -v bc-atlas-go-build:/root/.cache/go-build \
-  -v bc-atlas-npm-cache:/root/.npm \
-  bc-atlas-cms-all-in-one:2026.08.16-storage
+docker compose \
+  -f docker-compose.dev.yml \
+  run --rm dev
 ```
+
+The equivalent `docker run` form is also supported, but the Compose file keeps
+the workspace and dependency caches consistent between sessions.
 
 Inside the container, change code and run the checks manually:
 
