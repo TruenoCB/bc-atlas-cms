@@ -192,6 +192,50 @@ docker run --rm --entrypoint bash \
 
 生产镜像中的前端资源由 Go 从 `/app/web` 提供，不依赖 CDN。浏览器仍会向同源 Go 服务请求 API、图片和视频，这是本地自托管资源，不是外部 CDN。
 
+### 4.4 代码变更、容器内编译和重新打包
+
+最终 All-in-One 镜像同时保留了 Node/npm、Go、Git、Make 和 Python 工具链，
+因此可以直接作为代码级别的编译环境使用。镜像默认入口是运行入口，会启动
+MySQL、MinIO 和 Go；编译时要覆盖入口为 `bash`，这样不会启动任何服务，也不
+需要配置中间件密码。
+
+源码建议保留在宿主机 Git 工作区，通过 bind mount 进入容器：
+
+~~~bash
+docker run --rm -it \
+  --name bc-atlas-cms-dev \
+  --entrypoint bash \
+  -v "$PWD":/workspace \
+  -w /workspace \
+  -v bc-atlas-go-mod:/go/pkg/mod \
+  -v bc-atlas-go-build:/root/.cache/go-build \
+  -v bc-atlas-npm-cache:/root/.npm \
+  bc-atlas-cms-all-in-one:2026.08.16-storage
+~~~
+
+容器内的代码变更和验证：
+
+~~~bash
+npm ci
+npm run build
+npm run test:sites
+go test ./...
+go build -trimpath -o bin/bc-cms ./server/cmd/api
+go build -trimpath -o bin/bc-content-storage ./server/cmd/content-storage
+~~~
+
+代码验证通过后，回到宿主机使用新的不可变标签构建部署镜像：
+
+~~~bash
+docker build \
+  --build-arg BASE_IMAGE_REF=bc-atlas-cms-base:2026.08.12 \
+  -f Dockerfile.all-in-one \
+  -t bc-atlas-cms-all-in-one:2026.08.17 .
+~~~
+
+不要用 `docker commit` 代替构建；它无法可靠记录源码、依赖锁定文件和构建
+参数。账号密码属于运行阶段配置，编译阶段不需要。
+
 ## 5. 配置和密码管理
 
 | 文件 | 用途 |

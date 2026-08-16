@@ -95,6 +95,58 @@ docker compose \
 `--no-build` is important: it guarantees that Compose uses the image already
 loaded on the machine instead of trying to compile a new one.
 
+## Code changes and in-container compilation
+
+The release image also contains the pinned Node/npm and Go toolchains from the
+base image. It does not contain your working source tree. Keep the Git checkout
+on the host (or in a persistent workspace volume) and mount it into a temporary
+compiler container. Override the image entrypoint with `bash`; this prevents
+the MySQL, MinIO, and Go runtime processes from starting during compilation.
+
+From the repository checkout:
+
+```bash
+docker run --rm -it \
+  --name bc-atlas-cms-dev \
+  --entrypoint bash \
+  -v "$PWD":/workspace \
+  -w /workspace \
+  -v bc-atlas-go-mod:/go/pkg/mod \
+  -v bc-atlas-go-build:/root/.cache/go-build \
+  -v bc-atlas-npm-cache:/root/.npm \
+  bc-atlas-cms-all-in-one:2026.08.16-storage
+```
+
+Inside the container, change code and run the checks manually:
+
+```bash
+npm ci
+npm run build
+npm run test:sites
+go test ./...
+go build -trimpath -o bin/bc-cms ./server/cmd/api
+go build -trimpath -o bin/bc-content-storage ./server/cmd/content-storage
+```
+
+This step does not need `MYSQL_PASSWORD`, `MINIO_ROOT_PASSWORD`, or
+`ADMIN_PASSWORD`, because no middleware or application server is running. The
+compiled `bin/` files are written into the mounted checkout.
+
+After a code change is validated, build a new immutable deployment image from
+the checkout using `Dockerfile.all-in-one` and a new tag. Do not use
+`docker commit` for releases; it would omit the reproducible build inputs:
+
+```bash
+docker build \
+  --build-arg BASE_IMAGE_REF=bc-atlas-cms-base:2026.08.12 \
+  -f Dockerfile.all-in-one \
+  -t bc-atlas-cms-all-in-one:2026.08.17 .
+```
+
+Then point `AIO_TAG` at the new tag and use the normal runtime startup path.
+The development shell and the runtime Compose stack are intentionally
+separate concerns.
+
 ## One-command build and start
 
 ```bash
