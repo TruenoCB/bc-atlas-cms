@@ -4,13 +4,29 @@
 
 | Data | Store | Reason |
 | --- | --- | --- |
-| Article and Thought Markdown | MySQL `contents.body_markdown` | transactional edits, visibility, search, tags, comments |
-| Knowledge documents | MySQL `knowledge_pages.body_markdown` | hierarchy and access rules stay with the document |
+| Article and Thought Markdown | private S3-compatible object storage | canonical document bytes, immutable revisions, cheap backup/migration |
+| Knowledge documents | private S3-compatible object storage | canonical document bytes while hierarchy and access rules stay in MySQL |
 | Titles, summaries, state, users, comments, typed tags | MySQL | relational consistency |
+| Search projection | MySQL `content_search` | keyword search without loading Markdown from S3 for every list query |
 | Image, video, audio, PDF, archive, and other file bytes | private S3-compatible bucket | large-object streaming and independent lifecycle |
 | Uploaded-object index | MySQL `media_objects` | original name, detected MIME type, size, bucket, object key |
 
-Markdown contains stable `/media/{object-key}` references. It does not contain base64 file data, and article rows do not contain video bytes.
+Markdown contains stable `/media/{object-key}` references. It does not contain base64 file data, and article rows do not contain video bytes. New article and knowledge-page writes store Markdown in S3; MySQL keeps the object key, revision, SHA-256 hash, byte size, and a normalized search projection. Existing rows with inline Markdown continue to work until the migration command is run.
+
+## Document object layout
+
+Article and knowledge documents use deterministic, revisioned keys:
+
+```text
+bc-content/
+├── contents/{content-id}/revisions/000001.md
+├── contents/{content-id}/revisions/000002.md
+└── knowledge/{page-id}/revisions/000001.md
+```
+
+The key is generated from an internal UUID, never from a title or user filename. Every write uploads the next revision before the MySQL transaction commits. If MySQL rejects the update, the newly uploaded object is deleted. Reads verify the recorded byte size and SHA-256 hash before returning the body. Old revisions are intentionally retained so a later history UI or rollback workflow can be added without changing the storage contract.
+
+The `content_search` table stores title, summary, normalized Markdown text, and tag text. The API still uses a case-insensitive `LIKE` query today, so the feature remains portable and works for non-Latin text; the table also has a MySQL FULLTEXT index for a future high-volume search adapter.
 
 ## Object layout and upload transaction
 
@@ -49,8 +65,25 @@ Direct video links ending in `.mp4`, `.webm`, `.m4v`, `.mov`, or `.ogv` become n
 
 ## Provider portability
 
-The `media.Store` interface isolates HTTP handlers from the provider. `MinIOStore` uses `minio-go` and standard S3 operations, so deployment can move to another compatible endpoint by changing environment values. Keep `/media` as `S3_PUBLIC_URL` to preserve article URLs across provider or hostname changes.
+The `media.Store` and `media.ContentStore` interfaces isolate HTTP handlers from the provider. `MinIOStore` uses `minio-go` and standard S3 operations, so deployment can move to another compatible endpoint by changing environment values. Keep `/media` as the application route; the browser never receives S3 credentials or needs to know the bucket hostname.
+
+## Migration and verification
+
+The application is backward-compatible, but moving existing inline Markdown is an explicit maintenance operation so it can be preceded by a backup:
+
+For the recommended Compose deployment, run the compiled maintenance binary inside the already-connected app container:
+
+```bash
+docker compose --env-file .env exec app /app/bc-content-storage -mode verify
+docker compose --env-file .env exec app /app/bc-content-storage -mode migrate
+docker compose --env-file .env exec app /app/bc-content-storage -mode reindex
+docker compose --env-file .env exec app /app/bc-content-storage -mode verify
+```
+
+For All-in-One, replace `app` with `bc`. From a checkout with direct host access to MySQL and MinIO, the equivalent convenience targets are `make content-verify ENV_FILE=.env`, `make content-migrate ENV_FILE=.env`, and `make content-reindex ENV_FILE=.env`.
+
+`content-migrate` uploads only rows without an object key, records the key/hash/size in the same logical update, and leaves already migrated rows untouched. `content-reindex` rebuilds keyword-search text from either S3 or the legacy inline body. `content-verify` reads every recorded object and checks size and hash. The scripts require `DATABASE_DSN`, `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, and `S3_BUCKET`; they never print secret values.
 
 ## Backup rule
 
-MySQL and the bucket form one logical recovery point. Restore both together: MySQL alone loses media bytes, while the bucket alone loses articles, access rules, and the object index.
+MySQL and the bucket form one logical recovery point. Restore both together: MySQL alone loses document/media bytes, while the bucket alone loses articles, access rules, search projections, and the object index.

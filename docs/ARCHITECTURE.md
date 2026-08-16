@@ -2,14 +2,14 @@
 
 ## System shape
 
-B.C CMS is a modular monolith. React produces the public interface, the Go process owns authentication and all writes, MySQL is the transactional source of truth, and MinIO owns binary objects through the S3 API.
+B.C CMS is a modular monolith. React produces the public interface, the Go process owns authentication and all writes, MySQL is the transactional source of truth for metadata/search/access rules, and MinIO owns canonical document and media bytes through the S3 API.
 
 ```mermaid
 flowchart LR
   Browser[Browser] -->|HTML, JS, CSS, JSON, /media| App[Go application container]
   Browser -->|JSON API / session cookie| App
   App -->|SQL transactions| MySQL[(MySQL 8.4)]
-  App -->|S3 API| MinIO[(MinIO object storage)]
+  App -->|S3 API: Markdown + media| MinIO[(MinIO object storage)]
   App -->|compiled React files| Static[Embedded web directory]
 ```
 
@@ -25,6 +25,7 @@ The production image contains the compiled React assets and the Go binary. The b
 | Membership | `AuthDialog` | `/api/auth/**` | `domain/membership.go` | `users`, `sessions` |
 | Comments | `ArticleReader` | `/api/contents/{slug}/comments` | content repository | `comments` (nullable user for named guests) |
 | Media | publisher/editor upload controls | `/api/media` | `media.Store` | `media_objects` plus S3 objects |
+| Document storage | Composer payloads | internal to content/knowledge routes | `media.ContentStore` + `content_search` projection | document revision objects plus `body_*` metadata columns |
 
 Chat and About are deliberately not registered modules. A future implementation should add a new bounded module instead of reintroducing code into the content module.
 
@@ -34,8 +35,9 @@ Chat and About are deliberately not registered modules. A future implementation 
 - Readers can list public content. Member-only entries can appear as locked metadata, but the body remains server-protected.
 - Editors and admins can create or update content and knowledge pages.
 - The upload handler detects the MIME type from file bytes, streams the object to `media.Store`, then commits matching `media_objects` metadata. If metadata persistence fails, it removes the just-uploaded object to avoid an orphan.
-- `media.Store` is an S3-compatible boundary. The current adapter uses `minio-go`, so another compatible service can replace MinIO without changing UI code.
-- The repository interface supports both MySQL and a seeded in-memory development implementation. New persistence operations must be added to both.
+- Article and knowledge writes stream Markdown to `media.ContentStore` under an immutable revision key, then commit the object metadata and search projection in MySQL. Reads verify size/hash and fall back to legacy inline Markdown when no object key exists.
+- `media.Store` and `media.ContentStore` are S3-compatible boundaries. The current adapter uses `minio-go`, so another compatible service can replace MinIO without changing UI code.
+- The repository interface supports both MySQL and a seeded in-memory development implementation. New persistence operations must be added to both; the object-store seam is optional in local memory mode, where inline Markdown remains valid.
 
 ## Why a modular monolith
 

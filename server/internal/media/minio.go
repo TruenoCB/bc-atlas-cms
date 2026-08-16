@@ -38,6 +38,15 @@ type Store interface {
 	Delete(context.Context, string) error
 }
 
+// ContentStore is the private object boundary for Markdown/HTML documents.
+// It deliberately uses explicit keys so article revisions are immutable and
+// can be copied between S3-compatible providers without database changes.
+type ContentStore interface {
+	PutContent(context.Context, string, string, int64, io.Reader, map[string]string) (Object, error)
+	Open(context.Context, string) (ReadSeekCloser, Object, error)
+	Delete(context.Context, string) error
+}
+
 func (store *MinIOStore) Health(ctx context.Context) error {
 	_, err := store.client.BucketExists(ctx, store.bucket)
 	return err
@@ -85,14 +94,13 @@ func (store *MinIOStore) Put(ctx context.Context, header *multipart.FileHeader, 
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
-	info, err := store.client.PutObject(ctx, store.bucket, key, source, header.Size, minio.PutObjectOptions{
-		ContentType:  contentType,
-		UserMetadata: map[string]string{"original-name": cleanName},
-	})
+	object, err := store.PutContent(ctx, key, contentType, header.Size, source, map[string]string{"original-name": cleanName})
 	if err != nil {
 		return Object{}, err
 	}
-	object := Object{ID: id, Key: key, Bucket: store.bucket, Name: cleanName, ContentType: contentType, Size: info.Size, ModifiedAt: createdAt}
+	object.ID = id
+	object.Name = cleanName
+	object.ModifiedAt = createdAt
 	if store.publicURL != "" {
 		if strings.HasPrefix(store.publicURL, "/") {
 			object.URL = fmt.Sprintf("%s/%s", store.publicURL, key)
@@ -101,6 +109,23 @@ func (store *MinIOStore) Put(ctx context.Context, header *multipart.FileHeader, 
 		}
 	}
 	return object, nil
+}
+
+func (store *MinIOStore) PutContent(ctx context.Context, key, contentType string, size int64, source io.Reader, metadata map[string]string) (Object, error) {
+	if strings.TrimSpace(key) == "" {
+		return Object{}, fmt.Errorf("content object key is required")
+	}
+	if contentType == "" {
+		contentType = "text/markdown; charset=utf-8"
+	}
+	info, err := store.client.PutObject(ctx, store.bucket, key, source, size, minio.PutObjectOptions{
+		ContentType:  contentType,
+		UserMetadata: metadata,
+	})
+	if err != nil {
+		return Object{}, err
+	}
+	return Object{Key: key, Bucket: store.bucket, ContentType: contentType, Size: info.Size, ModifiedAt: time.Now().UTC()}, nil
 }
 
 func (store *MinIOStore) Open(ctx context.Context, key string) (ReadSeekCloser, Object, error) {

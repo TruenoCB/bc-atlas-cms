@@ -9,6 +9,8 @@ IMAGE_TAG=${AIO_TAG:-local}
 IMAGE_REF=${1:-${IMAGE_NAME}:${IMAGE_TAG}}
 APP_VERSION_VALUE=${APP_VERSION:-$(git rev-parse --short HEAD 2>/dev/null || printf 'dev')}
 BASE_IMAGE_REF_VALUE=${BASE_IMAGE_REF:-${BASE_IMAGE:-bc-atlas-cms-base}:${BASE_TAG:-2026.08.12}}
+NPM_REGISTRY_VALUE=${NPM_REGISTRY:-https://registry.npmjs.org/}
+GOPROXY_VALUE=${GOPROXY:-https://proxy.golang.org,direct}
 
 if ! command -v docker >/dev/null 2>&1; then
   printf 'Docker is required to build %s.\n' "$IMAGE_REF" >&2
@@ -23,7 +25,7 @@ if [ "${SKIP_BASE_BUILD:-0}" != "1" ]; then
   "$BUILD_ROOT/scripts/build-base-image.sh" "$BASE_IMAGE_REF_VALUE"
 fi
 
-BUILD_ARGS="--build-arg APP_VERSION=$APP_VERSION_VALUE --build-arg BASE_IMAGE_REF=$BASE_IMAGE_REF_VALUE"
+BUILD_ARGS="--build-arg APP_VERSION=$APP_VERSION_VALUE --build-arg BASE_IMAGE_REF=$BASE_IMAGE_REF_VALUE --build-arg NPM_REGISTRY=$NPM_REGISTRY_VALUE --build-arg GOPROXY=$GOPROXY_VALUE"
 
 if [ -n "${PLATFORMS:-}" ]; then
   OUTPUT_FLAG=--load

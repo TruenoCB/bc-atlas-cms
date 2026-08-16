@@ -113,7 +113,7 @@ Back up both state stores as one recovery point:
 3. retain `.env` secrets separately
 4. restore MySQL metadata and S3 objects together
 
-Article Markdown is in MySQL. Images, video, audio, and other uploaded binaries are in S3. A MySQL-only backup does not contain media bytes, and an S3-only backup does not contain articles, permissions, or object metadata.
+New article and knowledge-page Markdown is canonical in S3 under revisioned `contents/{id}/revisions/{n}.md` and `knowledge/{id}/revisions/{n}.md` keys. MySQL stores metadata, access rules, the object hash/size, and the `content_search` keyword projection; `body_markdown` remains only as a legacy fallback until the explicit migration command is run. Images, video, audio, and other uploaded binaries are also in S3. A MySQL-only backup does not contain document/media bytes, and an S3-only backup does not contain titles, permissions, tags, comments, or search metadata.
 
 ## Release checklist
 
@@ -126,4 +126,10 @@ docker compose --env-file .env.all-in-one.example -f docker-compose.all-in-one.y
 ./scripts/build-image.sh bc-atlas-cms:release-candidate
 ```
 
-The image build requires a running Docker daemon.
+The image build requires a running Docker daemon. On a build host whose network proxy makes the public package registries slow, override only the dependency mirrors for that build; the source and lockfiles remain unchanged:
+
+```bash
+NPM_REGISTRY=https://registry.npmmirror.com \
+GOPROXY=https://goproxy.cn,direct \
+./scripts/build-image.sh bc-atlas-cms:release-candidate
+```

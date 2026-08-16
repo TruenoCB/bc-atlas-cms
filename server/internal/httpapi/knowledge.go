@@ -111,6 +111,33 @@ func (server *Server) knowledgePages(writer http.ResponseWriter, request *http.R
 			return
 		}
 		input.AuthorID = user.ID
+		bodyMarkdown := input.BodyMarkdown
+		if input.ID == "" {
+			id, err := domain.NewID()
+			if err != nil {
+				server.internalError(writer, err)
+				return
+			}
+			input.ID = id
+		}
+		if server.contentStore != nil {
+			key, hash, size, cleanup, err := stageDocument(request.Context(), server.contentStore, "knowledge", input.ID, 1, bodyMarkdown)
+			if err != nil {
+				writeError(writer, http.StatusUnprocessableEntity, err.Error())
+				return
+			}
+			input.BodyMarkdown = ""
+			input.BodyObjectKey, input.BodyRevision, input.BodyHash, input.BodySize = key, 1, hash, size
+			created, err := server.repository.CreateKnowledgePage(request.Context(), baseSlug, input)
+			if err != nil {
+				cleanup()
+				writeError(writer, http.StatusUnprocessableEntity, err.Error())
+				return
+			}
+			created.BodyMarkdown = bodyMarkdown
+			writeJSON(writer, http.StatusCreated, created)
+			return
+		}
 		created, err := server.repository.CreateKnowledgePage(request.Context(), baseSlug, input)
 		if err != nil {
 			writeError(writer, http.StatusUnprocessableEntity, err.Error())
@@ -156,6 +183,11 @@ func (server *Server) knowledgePage(writer http.ResponseWriter, request *http.Re
 			writeError(writer, http.StatusNotFound, "knowledge page not found")
 			return
 		}
+		item, err = readKnowledgeDocument(request.Context(), server.contentStore, item)
+		if err != nil {
+			server.internalError(writer, err)
+			return
+		}
 		writeJSON(writer, http.StatusOK, item)
 		return
 	}
@@ -180,6 +212,27 @@ func (server *Server) knowledgePage(writer http.ResponseWriter, request *http.Re
 			return
 		}
 		input.AuthorID = user.ID
+		bodyMarkdown := input.BodyMarkdown
+		input.ID = current.ID
+		if server.contentStore != nil {
+			revision := current.BodyRevision + 1
+			key, hash, size, cleanup, err := stageDocument(request.Context(), server.contentStore, "knowledge", current.ID, revision, bodyMarkdown)
+			if err != nil {
+				writeError(writer, http.StatusUnprocessableEntity, err.Error())
+				return
+			}
+			input.BodyMarkdown = ""
+			input.BodyObjectKey, input.BodyRevision, input.BodyHash, input.BodySize = key, revision, hash, size
+			updated, err := server.repository.UpdateKnowledgePage(request.Context(), baseSlug, pageSlug, input)
+			if err != nil {
+				cleanup()
+				writeError(writer, http.StatusUnprocessableEntity, err.Error())
+				return
+			}
+			updated.BodyMarkdown = bodyMarkdown
+			writeJSON(writer, http.StatusOK, updated)
+			return
+		}
 		updated, err := server.repository.UpdateKnowledgePage(request.Context(), baseSlug, pageSlug, input)
 		if err != nil {
 			writeError(writer, http.StatusUnprocessableEntity, err.Error())
@@ -215,7 +268,7 @@ func canManageKnowledgePage(page domain.KnowledgePage, user *domain.User) bool {
 }
 
 func decodeKnowledgePageInput(writer http.ResponseWriter, request *http.Request) (domain.KnowledgePageInput, bool) {
-	request.Body = http.MaxBytesReader(writer, request.Body, 4<<20)
+	request.Body = http.MaxBytesReader(writer, request.Body, maxDocumentBodyBytes)
 	var input domain.KnowledgePageInput
 	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
 		writeError(writer, http.StatusBadRequest, "invalid JSON body")

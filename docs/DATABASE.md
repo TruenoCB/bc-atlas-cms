@@ -49,10 +49,11 @@ The footprint feature uses the publishing tables. `latitude`, `longitude`, and `
 | `users` | Member/editor/admin identity | unique email, role index |
 | `sessions` | Hashed private browser sessions | unique token hash, expiry index |
 | `media_objects` | Metadata for S3 objects | unique object key |
+| `content_search` | Search projection for article/thought rows | primary key `content_id`; MySQL FULLTEXT index for title, summary, body text, and tags |
 
-Binary bytes are not stored in MySQL. S3-compatible storage keeps them under immutable `YYYY/MM/{uuid}.{ext}` keys; `media_objects` stores the matching ID, object key, bucket, detected MIME type, original name, size, and timestamp. Upload is treated as a two-resource commit: after S3 succeeds, metadata is inserted; an insert failure triggers best-effort object deletion.
+Binary bytes are not stored in MySQL. S3-compatible storage keeps media under immutable `YYYY/MM/{uuid}.{ext}` keys and documents under `contents/{id}/revisions/{revision}.md` or `knowledge/{id}/revisions/{revision}.md`; `media_objects` stores the matching media ID, object key, bucket, detected MIME type, original name, size, and timestamp. Upload is treated as a two-resource commit: after S3 succeeds, metadata is inserted; an insert failure triggers best-effort object deletion.
 
-Article and knowledge-page Markdown is stored in `contents.body_markdown` and `knowledge_pages.body_markdown` respectively. Titles, summaries, visibility, publish state, hierarchy, comments, and typed tag properties also stay in MySQL. A media URL in Markdown references `/media/{object-key}` rather than embedding binary data in the article row.
+New article and knowledge-page Markdown is stored canonically in S3. `contents.body_markdown` and `knowledge_pages.body_markdown` remain as a legacy fallback for rows that have not been migrated. The four storage columns (`body_object_key`, `body_revision`, `body_hash`, `body_size`) let the Go service verify the object before returning it. Titles, summaries, visibility, publish state, hierarchy, comments, typed tag properties, and the normalized article search projection stay in MySQL. A media URL in Markdown references `/media/{object-key}` rather than embedding binary data in the article row.
 
 ## Migration policy
 
@@ -64,6 +65,7 @@ The current files are:
 - `002_membership.sql`: users and sessions
 - `003_comments.sql`: comments
 - `004_knowledge.sql`: knowledge bases and hierarchical pages
+- `005_content_storage.sql`: article search projection; document object metadata is added idempotently by the startup schema guard for compatibility with already-created installations
 
 `cover_url` is an additive compatibility column installed by the idempotent `ensureKnowledgeBaseCoverColumn` startup guard. The guard checks `information_schema` before altering an existing `knowledge_bases` table, which protects installations that already ran `004_knowledge.sql` without rewriting that deployed migration.
 
@@ -74,3 +76,4 @@ An installation created by an older build may still contain the unused `chat_mes
 - Back up MySQL with a consistent logical or physical snapshot.
 - Back up the MinIO bucket and its versioning policy separately.
 - Restore MySQL metadata and object storage together so stored URLs and object keys remain aligned.
+- Before migrating old inline Markdown, take a backup and run `make content-verify`; migration is intentionally a separate command rather than an automatic startup side effect.
