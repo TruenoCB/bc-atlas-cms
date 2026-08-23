@@ -23,6 +23,22 @@ Search covers type, title, slug, and summary. Each row exposes Preview and Dupli
 - Edit hydrates the original typed tags, cover, media reference, footprint properties, visibility, status, and Markdown, then updates by the original slug.
 - Duplicate copies the source into a new slug and starts as a Draft.
 
+### Inline images in Markdown
+
+In the Composer's **Write** mode, place the caret where the image should appear
+and either click **Insert image** or paste an image directly from the clipboard.
+The image is uploaded through `POST /api/media`, stored in the private S3 bucket,
+and inserted as ordinary Markdown such as:
+
+```markdown
+![Architecture overview](/media/2026/08/550e8400-e29b-41d4-a716-446655440000.png)
+```
+
+Only editors and administrators can upload. The returned URL is the CMS's
+same-origin `/media/...` route, not a public MinIO URL; the browser never
+receives S3 credentials. The separate **Title image** control uploads a cover
+into the typed `cover` tag and does not insert body Markdown.
+
 Changing a Draft or Archived item to Published refreshes `published_at` so archive ordering reflects the actual publication event. Unpublish moves an item to Draft without deleting it. Archive keeps the record and media references. Delete is permanent and requires confirmation.
 
 ## Content lifecycle

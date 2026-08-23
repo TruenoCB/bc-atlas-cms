@@ -13,6 +13,12 @@
 
 Markdown contains stable `/media/{object-key}` references. It does not contain base64 file data, and article rows do not contain video bytes. New article and knowledge-page writes store Markdown in S3; MySQL keeps the object key, revision, SHA-256 hash, byte size, and a normalized search projection. Existing rows with inline Markdown continue to work until the migration command is run.
 
+In the Composer, **Insert image** and clipboard image paste use the same
+authenticated `/api/media` endpoint. The UI receives the generated same-origin
+URL and inserts it into the Markdown; it does not expose the MinIO endpoint or
+credentials. A title image uses the separate `cover` tag rather than body
+Markdown.
+
 ## Document object layout
 
 Article and knowledge documents use deterministic, revisioned keys:

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Code, Eye, MapPin, UploadSimple, X } from "@phosphor-icons/react";
 import { uploadMedia } from "../lib/api.js";
 import { PrimarySpecularButton } from "./SpecularButton.jsx";
@@ -13,9 +13,9 @@ const initialForm = {
   latitude: "",
   longitude: "",
   visibility: "public",
-  status: "published",
-  tags: "travel, field-notes",
-  bodyMarkdown: "# A new field note\n\nWrite the story behind this place. Markdown, GFM, and LaTeX are supported.\n\n$$E = mc^2$$",
+  status: "draft",
+  tags: "",
+  bodyMarkdown: "",
   mediaUrl: "",
   mediaType: "",
   coverUrl: "",
@@ -32,6 +32,9 @@ export function PublishFootprintDialog({ open, composerMode = "create", initialV
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
+  const markdownRef = useRef(null);
+  const inlineImageInputRef = useRef(null);
+  const selectionRef = useRef({ start: 0, end: 0 });
 
   useEffect(() => {
     if (!open) return;
@@ -60,6 +63,62 @@ export function PublishFootprintDialog({ open, composerMode = "create", initialV
     [key]: value,
     ...(key === "title" && !current.slug ? { slug: slugify(value) } : {}),
   }));
+
+  const rememberMarkdownSelection = (event) => {
+    selectionRef.current = {
+      start: event.currentTarget.selectionStart ?? 0,
+      end: event.currentTarget.selectionEnd ?? event.currentTarget.selectionStart ?? 0,
+    };
+  };
+
+  const insertMarkdown = (snippet) => {
+    const textarea = markdownRef.current;
+    const selection = selectionRef.current;
+    setForm((current) => {
+      const start = Math.min(selection.start, current.bodyMarkdown.length);
+      const end = Math.min(Math.max(selection.end, start), current.bodyMarkdown.length);
+      const nextValue = `${current.bodyMarkdown.slice(0, start)}${snippet}${current.bodyMarkdown.slice(end)}`;
+      const nextPosition = start + snippet.length;
+      selectionRef.current = { start: nextPosition, end: nextPosition };
+      return { ...current, bodyMarkdown: nextValue };
+    });
+    window.requestAnimationFrame(() => {
+      if (!textarea) return;
+      textarea.focus();
+      textarea.setSelectionRange(selectionRef.current.start, selectionRef.current.end);
+    });
+  };
+
+  const uploadInlineImages = async (files) => {
+    const images = Array.from(files).filter((file) => file.type.startsWith("image/"));
+    if (!images.length) {
+      setError("Choose an image file or paste an image from the clipboard.");
+      return;
+    }
+    setUploading(true);
+    setError("");
+    try {
+      const uploaded = [];
+      for (const file of images) {
+        const media = await uploadMedia(file);
+        const alt = file.name.replace(/\.[^/.]+$/, "").replace(/[-_]+/g, " ").trim() || "Image";
+        uploaded.push(`![${alt}](${media.url})`);
+      }
+      insertMarkdown(`${uploaded.join("\n\n")}\n\n`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "The image upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleInlineImagePaste = (event) => {
+    const images = Array.from(event.clipboardData?.files ?? []).filter((file) => file.type.startsWith("image/"));
+    if (!images.length) return;
+    event.preventDefault();
+    rememberMarkdownSelection(event);
+    void uploadInlineImages(images);
+  };
 
   const upload = async (event, purpose = "media") => {
     const file = event.target.files?.[0];
@@ -140,7 +199,7 @@ export function PublishFootprintDialog({ open, composerMode = "create", initialV
           </div>
           <label>
             <span>Summary</span>
-            <textarea required rows="2" value={form.summary} onChange={(event) => update("summary", event.target.value)} placeholder="A concise reason to open this field note." />
+            <textarea required rows="2" value={form.summary} onChange={(event) => update("summary", event.target.value)} placeholder="A concise reason to open this content." />
           </label>
           <div className="form-grid two-columns cover-fields">
             <label className="media-upload-field">
@@ -198,10 +257,45 @@ export function PublishFootprintDialog({ open, composerMode = "create", initialV
           <div className="editor-toolbar" role="tablist" aria-label="Markdown editor mode">
             <button type="button" className={mode === "write" ? "active" : ""} onClick={() => setMode("write")}><Code size={14} />Write</button>
             <button type="button" className={mode === "preview" ? "active" : ""} onClick={() => setMode("preview")}><Eye size={14} />Preview</button>
+            <button
+              type="button"
+              onClick={() => {
+                selectionRef.current = {
+                  start: markdownRef.current?.selectionStart ?? form.bodyMarkdown.length,
+                  end: markdownRef.current?.selectionEnd ?? form.bodyMarkdown.length,
+                };
+                inlineImageInputRef.current?.click();
+              }}
+              disabled={uploading}
+            >
+              <UploadSimple size={14} />{uploading ? "Uploading…" : "Insert image"}
+            </button>
+            <input
+              ref={inlineImageInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              hidden
+              onChange={(event) => {
+                void uploadInlineImages(event.target.files ?? []);
+                event.target.value = "";
+              }}
+            />
           </div>
-          <div className="schema-note"><Code size={15} /><span>Safe video embed: <code>[embed](https://youtube.com/...)</code> · sandboxed HTML: <code>```html-sandbox</code></span></div>
+          <div className="schema-note"><Code size={15} /><span>Paste an image here or use <strong>Insert image</strong>; it uploads to private S3 and inserts a <code>/media/…</code> Markdown URL. Safe video embed: <code>[embed](https://youtube.com/...)</code> · sandboxed HTML: <code>```html-sandbox</code></span></div>
           {mode === "write" ? (
-            <textarea className="markdown-editor" rows="10" value={form.bodyMarkdown} onChange={(event) => update("bodyMarkdown", event.target.value)} />
+            <textarea
+              ref={markdownRef}
+              className="markdown-editor"
+              rows="10"
+              value={form.bodyMarkdown}
+              onChange={(event) => update("bodyMarkdown", event.target.value)}
+              onSelect={rememberMarkdownSelection}
+              onClick={rememberMarkdownSelection}
+              onKeyUp={rememberMarkdownSelection}
+              onPaste={handleInlineImagePaste}
+              placeholder="Write in Markdown. Paste an image or use Insert image. GFM and LaTeX are supported."
+            />
           ) : (
             <div className="markdown-preview markdown-body">
               <MarkdownContent body={form.bodyMarkdown} className="markdown-preview-content" />

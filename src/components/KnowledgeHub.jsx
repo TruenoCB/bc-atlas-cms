@@ -25,9 +25,9 @@ const initialEditor = {
   slug: "",
   summary: "",
   position: 10,
-  status: "published",
+  status: "draft",
   visibility: "public",
-  bodyMarkdown: "Start writing here.\n\n## First section\n\nAdd the details.",
+  bodyMarkdown: "",
 };
 
 function slugify(value) {
@@ -391,11 +391,11 @@ export function KnowledgeHub({ user, onRequireAuth }) {
               <label className="full"><span>Summary</span><input value={editor.summary} onChange={(event) => setEditor((current) => ({ ...current, summary: event.target.value }))} /></label>
               <label><span>Visibility</span><select value={editor.visibility} onChange={(event) => setEditor((current) => ({ ...current, visibility: event.target.value }))}><option value="public">Public</option><option value="members">Members</option><option value="private">Private</option></select></label>
               <label><span>Status</span><select value={editor.status} onChange={(event) => setEditor((current) => ({ ...current, status: event.target.value }))}><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></select></label>
-              <label className="full"><span>Markdown / LaTeX / sandboxed HTML</span><textarea rows="16" value={editor.bodyMarkdown} onChange={(event) => setEditor((current) => ({ ...current, bodyMarkdown: event.target.value }))} /></label>
+              <label className="full"><span>Markdown / LaTeX / sandboxed HTML</span><textarea rows="16" value={editor.bodyMarkdown} onChange={(event) => setEditor((current) => ({ ...current, bodyMarkdown: event.target.value }))} placeholder="Write in Markdown. Attach media below; GFM, LaTeX, and html-sandbox blocks are supported." /></label>
             </div>
             <footer>
               <label className="knowledge-upload"><UploadSimple size={15} />Attach image or video<input type="file" accept="image/*,video/*" onChange={attachMedia} /></label>
-              <PrimarySpecularButton type="submit" disabled={saving}>{saving ? "Saving…" : "Publish page"}</PrimarySpecularButton>
+              <PrimarySpecularButton type="submit" disabled={saving}>{saving ? "Saving…" : editor.status === "draft" ? "Save draft" : "Publish page"}</PrimarySpecularButton>
             </footer>
           </form>
         </div>

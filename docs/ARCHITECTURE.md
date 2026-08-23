@@ -37,7 +37,7 @@ Chat and About are deliberately not registered modules. A future implementation 
 - The upload handler detects the MIME type from file bytes, streams the object to `media.Store`, then commits matching `media_objects` metadata. If metadata persistence fails, it removes the just-uploaded object to avoid an orphan.
 - Article and knowledge writes stream Markdown to `media.ContentStore` under an immutable revision key, then commit the object metadata and search projection in MySQL. Reads verify size/hash and fall back to legacy inline Markdown when no object key exists.
 - `media.Store` and `media.ContentStore` are S3-compatible boundaries. The current adapter uses `minio-go`, so another compatible service can replace MinIO without changing UI code.
-- The repository interface supports both MySQL and a seeded in-memory development implementation. New persistence operations must be added to both; the object-store seam is optional in local memory mode, where inline Markdown remains valid.
+- The repository interface supports both MySQL and a seeded in-memory development implementation. The memory repository is opt-in through `ALLOW_MEMORY_STORE=true` and is intended only for local UI development; deployed runs require `DATABASE_DSN` and never fall back to demo records. New persistence operations must be added to both; the object-store seam is optional in local memory mode, where inline Markdown remains valid.
 
 ## Why a modular monolith
 

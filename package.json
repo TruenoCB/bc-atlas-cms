@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:api": "go run ./server/cmd/api -addr :8080",
+    "dev:api": "ALLOW_MEMORY_STORE=true go run ./server/cmd/api -addr :8080",
     "build": "vite build && node scripts/prepare-sites-build.mjs",
     "preview": "vite preview",
     "test:sites": "node --test tests/sites-worker.test.mjs"

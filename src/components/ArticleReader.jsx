@@ -62,6 +62,9 @@ export function ArticleReader({ article, onClose, user, footprints = [] }) {
   const toc = useMemo(() => extractToc(article?.bodyMarkdown), [article?.bodyMarkdown]);
   const visibleTags = meaningfulContentTags(article);
   const cover = resolveContentCover(article);
+  const bannerPath = [article?.type === "article" ? "ESSAY" : article?.type?.toUpperCase(), ...visibleTags.slice(0, 2).map((tag) => (tag.name || tag.slug).toUpperCase())]
+    .filter(Boolean)
+    .join(" / ");
 
   useEffect(() => {
     if (!isEssay || !article) return undefined;
@@ -187,7 +190,7 @@ export function ArticleReader({ article, onClose, user, footprints = [] }) {
               fontFamily="Cormorant Garamond, Georgia, serif"
               glow
             />}
-            <small>ESSAYS / SYSTEMS / FIELDWORK</small>
+            <small>{bannerPath}</small>
           </div>
           <h1 id="reader-title">{article.title}</h1>
           <div className="essay-byline">

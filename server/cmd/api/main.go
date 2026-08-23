@@ -31,17 +31,19 @@ func main() {
 	repository, closeRepository, err := repositoryFromEnvironment(ctx, logger)
 	if err != nil {
 		logger.Error("database startup failed", "error", err)
-		return
+		os.Exit(1)
 	}
 	defer closeRepository()
 	if err := bootstrapAdmin(ctx, repository, logger); err != nil {
 		logger.Error("admin bootstrap failed", "error", err)
-		return
+		closeRepository()
+		os.Exit(1)
 	}
 	mediaStore, err := mediaFromEnvironment(ctx, logger)
 	if err != nil {
 		logger.Error("object storage startup failed", "error", err)
-		return
+		closeRepository()
+		os.Exit(1)
 	}
 
 	server := &http.Server{
@@ -101,6 +103,10 @@ func bootstrapAdmin(ctx context.Context, repository store.Repository, logger *sl
 func repositoryFromEnvironment(ctx context.Context, logger *slog.Logger) (store.Repository, func(), error) {
 	dsn := os.Getenv("DATABASE_DSN")
 	if dsn == "" {
+		allowMemoryStore, _ := strconv.ParseBool(os.Getenv("ALLOW_MEMORY_STORE"))
+		if !allowMemoryStore {
+			return nil, func() {}, fmt.Errorf("DATABASE_DSN is required (set ALLOW_MEMORY_STORE=true only for local development)")
+		}
 		logger.Warn("DATABASE_DSN is empty; using the in-memory development repository")
 		return store.NewMemoryRepository(), func() {}, nil
 	}

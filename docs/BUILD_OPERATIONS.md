@@ -227,6 +227,15 @@ npm run test:sites
 go test ./...
 go build -trimpath -o bin/bc-cms ./server/cmd/api
 go build -trimpath -o bin/bc-content-storage ./server/cmd/content-storage
+
+
+install -m 0755 bin/bc-cms /app/bc-cms
+install -m 0755 bin/bc-content-storage /app/bc-content-storage
+
+rm -rf /app/web
+cp -a dist/client /app/web
+
+/usr/local/bin/bc-all-in-one-entrypoint
 ~~~
 
 代码验证通过后，回到宿主机使用新的不可变标签构建部署镜像：
@@ -362,6 +371,48 @@ MINIO_CONSOLE_PORT=19001
 ~~~
 
 MySQL、MinIO API、MinIO Console 不应该暴露到公网。Nginx 不是必需组件；只有在需要 TLS、多站点、限流或集中访问日志时，才在容器外增加 Nginx。
+
+### 使用 Nginx 挂载到 `/bc-blog`
+
+如果 Nginx 与 `bc-blog-dev-1` 位于同一个 Docker network，可以把下面规则
+加入现有 `server` 块：
+
+~~~nginx
+location = /bc-blog {
+    return 301 /bc-blog/;
+}
+
+location ^~ /bc-blog/ {
+    # 末尾的 / 会剥离 /bc-blog 前缀
+    proxy_pass http://bc-blog-dev-1:8080/;
+    proxy_http_version 1.1;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Prefix /bc-blog;
+
+    client_max_body_size 512m;
+    proxy_request_buffering off;
+    proxy_connect_timeout 60s;
+    proxy_send_timeout 600s;
+    proxy_read_timeout 600s;
+}
+~~~
+
+`bc-blog-dev-1` 这个容器名只在同一个 Docker network 内可解析。如果 Nginx
+运行在宿主机上，应使用已发布的端口：
+
+~~~nginx
+proxy_pass http://127.0.0.1:8080/;
+~~~
+
+可直接复制的片段见 `deploy/nginx/bc-blog-subpath.conf.example`。当前前端
+代码使用 `/api`、`/media`、`/rss.xml` 等根路径 URL，因此仅配置
+`X-Forwarded-Prefix` 并不能自动让所有浏览器请求变成 `/bc-blog/...`。在
+没有改造前端 base path 之前，推荐给 CMS 使用独立域名并代理 `location /`；
+`/bc-blog` 子路径方案需要同时处理前端资源和 API 的前缀。
 
 ## 8. 容器内目录和运行时行为
 

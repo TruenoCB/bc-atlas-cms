@@ -310,3 +310,47 @@ A filesystem copy taken while MySQL is actively writing is not automatically a c
 No, not by default. The Go process already serves the compiled React application, APIs, RSS, and same-origin `/media/**` responses, including HTTP Range for video. If the tunnel already terminates HTTPS and forwards to `127.0.0.1:APP_PORT`, another proxy adds no required application feature.
 
 Use an external Nginx layer when it owns a real edge concern: TLS certificates, multiple domains or applications on one host, IP allowlists, rate limiting, or centralized access logs. Keep it outside the all-in-one image so it can be upgraded independently. A starting configuration is available at `deploy/nginx/bc-atlas.conf.example`; its upload limit matches the application's current 512 MiB request limit and upload buffering is disabled.
+
+### Routing the service under `/bc-blog`
+
+If Nginx and the `bc-blog-dev-1` container share a Docker network, the following
+locations can be added to the existing `server` block. The trailing slash in
+`proxy_pass` deliberately removes the `/bc-blog` prefix before forwarding:
+
+```nginx
+location = /bc-blog {
+    return 301 /bc-blog/;
+}
+
+location ^~ /bc-blog/ {
+    proxy_pass http://bc-blog-dev-1:8080/;
+    proxy_http_version 1.1;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Prefix /bc-blog;
+
+    client_max_body_size 512m;
+    proxy_request_buffering off;
+    proxy_connect_timeout 60s;
+    proxy_send_timeout 600s;
+    proxy_read_timeout 600s;
+}
+```
+
+The container name is resolvable only from a container attached to the same
+Docker network. If Nginx runs on the host, publish the application port and use
+`proxy_pass http://127.0.0.1:8080/;` instead. A copyable snippet is kept at
+`deploy/nginx/bc-blog-subpath.conf.example`.
+
+The current frontend uses root-relative URLs such as `/api`, `/media`, and
+`/rss.xml`. Consequently, a path prefix is not a complete deployment boundary
+without also configuring the frontend/API base path; the `X-Forwarded-Prefix`
+header alone does not rewrite browser requests. The stable no-code option is a
+dedicated hostname (for example `blog.example.com`) with `location /` proxying
+to the container, as shown in `deploy/nginx/bc-atlas.conf.example`. Use the
+`/bc-blog` locations only after the application has been built with a matching
+base path or when the remaining root-relative routes are deliberately mapped
+by the surrounding Nginx configuration.

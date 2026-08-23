@@ -34,10 +34,10 @@ npm run dev
 In another terminal:
 
 ```bash
-go run ./server/cmd/api
+npm run dev:api
 ```
 
-The frontend is available at `http://localhost:4173` and proxies `/api` and `/rss.xml` to the Go server on port `8080`.
+The frontend is available at `http://localhost:4173` and proxies `/api` and `/rss.xml` to the Go server on port `8080`. `dev:api` explicitly enables the seeded in-memory repository for UI development only. A deployed application requires `DATABASE_DSN`; it will not silently start with demo records when the database configuration is missing.
 
 ## One-command Docker deployment
 
