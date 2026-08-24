@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +31,40 @@ func (repository *MemoryRepository) CreateMediaObject(_ context.Context, object 
 	repository.mediaObjects = append(repository.mediaObjects, object)
 	repository.mu.Unlock()
 	return nil
+}
+
+func (repository *MemoryRepository) ListMediaObjects(_ context.Context, filter domain.MediaFilter) ([]domain.MediaObject, error) {
+	repository.mu.RLock()
+	items := append([]domain.MediaObject(nil), repository.mediaObjects...)
+	repository.mu.RUnlock()
+	query := strings.ToLower(strings.TrimSpace(filter.Query))
+	items = filterMediaObjects(items, query, filter.Kind)
+	sort.Slice(items, func(left, right int) bool { return items[left].CreatedAt.After(items[right].CreatedAt) })
+	limit := filter.Limit
+	if limit <= 0 || limit > 250 {
+		limit = 250
+	}
+	if len(items) > limit {
+		items = items[:limit]
+	}
+	return items, nil
+}
+
+func filterMediaObjects(items []domain.MediaObject, query, kind string) []domain.MediaObject {
+	filtered := make([]domain.MediaObject, 0, len(items))
+	for _, item := range items {
+		if query != "" && !strings.Contains(strings.ToLower(item.OriginalName+" "+item.ObjectKey+" "+item.ContentType), query) {
+			continue
+		}
+		if kind == "document" && (strings.HasPrefix(item.ContentType, "image/") || strings.HasPrefix(item.ContentType, "video/") || strings.HasPrefix(item.ContentType, "audio/")) {
+			continue
+		}
+		if (kind == "image" || kind == "video" || kind == "audio") && !strings.HasPrefix(item.ContentType, kind+"/") {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	return filtered
 }
 
 func NewMemoryRepository() *MemoryRepository {

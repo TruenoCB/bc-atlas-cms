@@ -13,11 +13,24 @@
 
 Markdown contains stable `/media/{object-key}` references. It does not contain base64 file data, and article rows do not contain video bytes. New article and knowledge-page writes store Markdown in S3; MySQL keeps the object key, revision, SHA-256 hash, byte size, and a normalized search projection. Existing rows with inline Markdown continue to work until the migration command is run.
 
-In the Composer, **Insert image** and clipboard image paste use the same
-authenticated `/api/media` endpoint. The UI receives the generated same-origin
-URL and inserts it into the Markdown; it does not expose the MinIO endpoint or
-credentials. A title image uses the separate `cover` tag rather than body
-Markdown.
+In the Composer, **Insert image**, clipboard image paste, and **Insert video**
+use the same authenticated `/api/media` endpoint. The UI receives the generated
+same-origin URL and inserts it into the Markdown; it does not expose the MinIO
+endpoint or credentials. Local video links with an `.mp4`, `.webm`, `.m4v`,
+`.mov`, or `.ogv` extension render as native players. A title image uses the
+separate `cover` tag rather than body Markdown.
+
+## Media Library
+
+For editors and administrators, Workspace → **Media library** reads the
+`media_objects` index from MySQL and returns the generated same-origin
+`/media/{object-key}` URL. It supports filename/object-key/MIME search, type
+filters, browser previews, and copying either the URL or Markdown syntax. The
+S3 bucket remains private and is not browsed directly by the client.
+
+The library currently lists and uploads but does not delete objects. The index
+does not yet record every Markdown reference, so destructive cleanup must wait
+for a reference-aware maintenance operation.
 
 ## Document object layout
 

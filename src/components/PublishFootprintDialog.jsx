@@ -26,6 +26,10 @@ function slugify(value) {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 }
 
+function isVideoFile(file) {
+  return file.type.startsWith("video/") || /\.(mp4|webm|m4v|mov|ogv)$/i.test(file.name);
+}
+
 export function PublishFootprintDialog({ open, composerMode = "create", initialValue = null, onClose, onSubmit }) {
   const [form, setForm] = useState(initialForm);
   const [mode, setMode] = useState("write");
@@ -34,6 +38,7 @@ export function PublishFootprintDialog({ open, composerMode = "create", initialV
   const [uploading, setUploading] = useState(false);
   const markdownRef = useRef(null);
   const inlineImageInputRef = useRef(null);
+  const inlineVideoInputRef = useRef(null);
   const selectionRef = useRef({ start: 0, end: 0 });
 
   useEffect(() => {
@@ -107,6 +112,31 @@ export function PublishFootprintDialog({ open, composerMode = "create", initialV
       insertMarkdown(`${uploaded.join("\n\n")}\n\n`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "The image upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const uploadInlineVideos = async (files) => {
+    const videos = Array.from(files).filter(isVideoFile);
+    if (!videos.length) {
+      setError("Choose a supported video file such as MP4 or WebM.");
+      return;
+    }
+    setUploading(true);
+    setError("");
+    try {
+      const uploaded = [];
+      for (const file of videos) {
+        const media = await uploadMedia(file);
+        const title = file.name.replace(/\.[^/.]+$/, "").replace(/[-_]+/g, " ").trim() || "Video";
+        // MarkdownContent recognizes a local video extension and renders a
+        // native player instead of an ordinary anchor.
+        uploaded.push(`[${title}](${media.url})`);
+      }
+      insertMarkdown(`${uploaded.join("\n\n")}\n\n`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "The video upload failed.");
     } finally {
       setUploading(false);
     }
@@ -270,6 +300,19 @@ export function PublishFootprintDialog({ open, composerMode = "create", initialV
             >
               <UploadSimple size={14} />{uploading ? "Uploading…" : "Insert image"}
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                selectionRef.current = {
+                  start: markdownRef.current?.selectionStart ?? form.bodyMarkdown.length,
+                  end: markdownRef.current?.selectionEnd ?? form.bodyMarkdown.length,
+                };
+                inlineVideoInputRef.current?.click();
+              }}
+              disabled={uploading}
+            >
+              <UploadSimple size={14} />{uploading ? "Uploading…" : "Insert video"}
+            </button>
             <input
               ref={inlineImageInputRef}
               type="file"
@@ -281,8 +324,19 @@ export function PublishFootprintDialog({ open, composerMode = "create", initialV
                 event.target.value = "";
               }}
             />
+            <input
+              ref={inlineVideoInputRef}
+              type="file"
+              accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-m4v"
+              multiple
+              hidden
+              onChange={(event) => {
+                void uploadInlineVideos(event.target.files ?? []);
+                event.target.value = "";
+              }}
+            />
           </div>
-          <div className="schema-note"><Code size={15} /><span>Paste an image here or use <strong>Insert image</strong>; it uploads to private S3 and inserts a <code>/media/…</code> Markdown URL. Safe video embed: <code>[embed](https://youtube.com/...)</code> · sandboxed HTML: <code>```html-sandbox</code></span></div>
+          <div className="schema-note"><Code size={15} /><span>Paste an image, or use <strong>Insert image</strong> / <strong>Insert video</strong>; each upload is stored in private S3 and inserted as a <code>/media/…</code> Markdown URL. Local MP4 and WebM play inline. Safe external video: <code>[embed](https://youtube.com/...)</code> · sandboxed HTML: <code>```html-sandbox</code></span></div>
           {mode === "write" ? (
             <textarea
               ref={markdownRef}

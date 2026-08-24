@@ -15,17 +15,33 @@ import (
 )
 
 func (server *Server) uploadMedia(writer http.ResponseWriter, request *http.Request) {
-	if request.Method != http.MethodPost {
-		methodNotAllowed(writer, http.MethodPost)
-		return
-	}
 	user := server.currentUser(request)
 	if user == nil {
-		writeError(writer, http.StatusUnauthorized, "sign in to upload media")
+		writeError(writer, http.StatusUnauthorized, "sign in to manage media")
 		return
 	}
 	if !user.CanPublish() {
 		writeError(writer, http.StatusForbidden, "editor access is required")
+		return
+	}
+	if request.Method == http.MethodGet {
+		items, err := server.repository.ListMediaObjects(request.Context(), domain.MediaFilter{
+			Query: request.URL.Query().Get("q"),
+			Kind:  request.URL.Query().Get("kind"),
+			Limit: 250,
+		})
+		if err != nil {
+			server.internalError(writer, err)
+			return
+		}
+		for index := range items {
+			items[index].URL = "/media/" + items[index].ObjectKey
+		}
+		writeJSON(writer, http.StatusOK, map[string]any{"items": items})
+		return
+	}
+	if request.Method != http.MethodPost {
+		methodNotAllowed(writer, http.MethodGet, http.MethodPost)
 		return
 	}
 	if server.mediaStore == nil {

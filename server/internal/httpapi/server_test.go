@@ -282,6 +282,27 @@ func TestMediaUploadPersistsAndSupportsRangeRequests(t *testing.T) {
 		t.Fatalf("unexpected uploaded object: %#v", uploaded)
 	}
 
+	libraryRequest := httptest.NewRequest(http.MethodGet, "/api/media?kind=image&q=cover", nil)
+	libraryRequest.AddCookie(cookie)
+	libraryResponse := httptest.NewRecorder()
+	handler.ServeHTTP(libraryResponse, libraryRequest)
+	if libraryResponse.Code != http.StatusOK {
+		t.Fatalf("media library status = %d, body = %s", libraryResponse.Code, libraryResponse.Body.String())
+	}
+	var library struct {
+		Items []domain.MediaObject `json:"items"`
+	}
+	decodeResponse(t, libraryResponse, &library)
+	if len(library.Items) != 1 || library.Items[0].URL != uploaded.URL || library.Items[0].OriginalName != "cover.png" {
+		t.Fatalf("unexpected media library items: %#v", library.Items)
+	}
+
+	guestLibrary := httptest.NewRecorder()
+	handler.ServeHTTP(guestLibrary, httptest.NewRequest(http.MethodGet, "/api/media", nil))
+	if guestLibrary.Code != http.StatusUnauthorized {
+		t.Fatalf("guest media library status = %d, want %d", guestLibrary.Code, http.StatusUnauthorized)
+	}
+
 	readRequest := httptest.NewRequest(http.MethodGet, uploaded.URL, nil)
 	readRequest.Header.Set("Range", "bytes=0-3")
 	readResponse := httptest.NewRecorder()

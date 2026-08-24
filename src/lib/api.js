@@ -97,6 +97,12 @@ export async function uploadMedia(file) {
   return payload;
 }
 
+export async function listMedia(filters = {}) {
+  const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
+  const payload = await request(`/api/media${query.size ? `?${query}` : ""}`);
+  return payload.items ?? [];
+}
+
 export async function createFootprint(input) {
   const payload = {
     type: "article",
