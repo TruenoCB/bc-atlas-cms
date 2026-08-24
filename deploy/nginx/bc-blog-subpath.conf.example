@@ -1,0 +1,29 @@
+# Optional /bc-blog path-based reverse-proxy snippet.
+# Merge these locations into the existing server block. Do not create a second
+# server block with the same listen/server_name unless that is intentional.
+#
+# This upstream name works when Nginx is attached to the same Docker network as
+# the Compose service/container. For host-installed Nginx, replace it with
+# http://127.0.0.1:8080/ and publish the CMS application port.
+
+location = /bc-blog {
+    return 301 /bc-blog/;
+}
+
+location ^~ /bc-blog/ {
+    # The trailing slash strips /bc-blog before forwarding.
+    proxy_pass http://bc-blog-dev-1:8080/;
+    proxy_http_version 1.1;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Prefix /bc-blog;
+
+    client_max_body_size 512m;
+    proxy_request_buffering off;
+    proxy_connect_timeout 60s;
+    proxy_send_timeout 600s;
+    proxy_read_timeout 600s;
+}

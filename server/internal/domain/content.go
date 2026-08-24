@@ -40,18 +40,29 @@ type Content struct {
 	UpdatedAt    time.Time `json:"updatedAt"`
 	Tags         []Tag     `json:"tags"`
 	Locked       bool      `json:"locked,omitempty"`
+	// Body storage metadata is intentionally hidden from the public API response.
+	BodyObjectKey string `json:"-"`
+	BodyRevision  int    `json:"-"`
+	BodyHash      string `json:"-"`
+	BodySize      int64  `json:"-"`
 }
 
 type ContentInput struct {
-	AuthorID     string `json:"-"`
-	Type         string `json:"type"`
-	Slug         string `json:"slug"`
-	Title        string `json:"title"`
-	Summary      string `json:"summary"`
-	BodyMarkdown string `json:"bodyMarkdown"`
-	Status       string `json:"status"`
-	Visibility   string `json:"visibility"`
-	Tags         []Tag  `json:"tags"`
+	ID            string `json:"-"`
+	AuthorID      string `json:"-"`
+	Type          string `json:"type"`
+	Slug          string `json:"slug"`
+	Title         string `json:"title"`
+	Summary       string `json:"summary"`
+	BodyMarkdown  string `json:"bodyMarkdown"`
+	Status        string `json:"status"`
+	Visibility    string `json:"visibility"`
+	Tags          []Tag  `json:"tags"`
+	BodyObjectKey string `json:"-"`
+	BodyRevision  int    `json:"-"`
+	BodyHash      string `json:"-"`
+	BodySize      int64  `json:"-"`
+	SearchText    string `json:"-"`
 }
 
 type ContentFilter struct {

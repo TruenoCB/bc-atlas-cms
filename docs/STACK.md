@@ -5,8 +5,8 @@
 | Service | Role | Required now |
 | --- | --- | --- |
 | Go application container | API, authentication, static application files, RSS, S3 upload gateway | yes |
-| MySQL 8.4 | structured content, hierarchy, accounts, sessions, comments, media metadata | yes |
-| MinIO | images, video, audio, documents, and other binary objects through S3 | yes |
+| MySQL 8.4 | structured metadata, hierarchy, accounts, sessions, comments, media metadata, and the article search projection | yes |
+| MinIO | canonical article/knowledge Markdown plus images, video, audio, documents, and other binary objects through S3 | yes |
 
 Two stateful middleware services are sufficient for the current scope. MySQL provides transactions and referential integrity; MinIO provides an S3-compatible object API. The application should not add Redis, Kafka/NATS, Elasticsearch, or a worker until a feature requires one.
 

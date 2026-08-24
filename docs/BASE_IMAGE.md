@@ -116,6 +116,12 @@ BASE_TAG=2026.08.12 \
 
 The build script compiles MinIO from source, tags the result as `bc-atlas-cms-base:2026.08.12`, and runs a smoke test for Node, npm, Go, MySQL, MinIO, the source archive, license, and official MySQL entrypoint.
 
+BuildKit keeps the Go module and compiler caches between retries. If the default Go module proxy is slow or unreliable on the build host, select a reachable mirror without changing the pinned MinIO source revision:
+
+```bash
+MINIO_GOPROXY=https://goproxy.cn,direct make base-image
+```
+
 Verify an existing image separately:
 
 ```bash

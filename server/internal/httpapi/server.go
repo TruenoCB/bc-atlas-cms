@@ -21,14 +21,16 @@ import (
 type Server struct {
 	repository   store.Repository
 	mediaStore   media.Store
+	contentStore media.ContentStore
 	webRoot      string
 	logger       *slog.Logger
 	cookieSecure bool
 }
 
 func New(repository store.Repository, mediaStore media.Store, webRoot string, logger *slog.Logger) http.Handler {
+	contentStore, _ := mediaStore.(media.ContentStore)
 	server := &Server{
-		repository: repository, mediaStore: mediaStore, webRoot: webRoot, logger: logger,
+		repository: repository, mediaStore: mediaStore, contentStore: contentStore, webRoot: webRoot, logger: logger,
 		cookieSecure: strings.EqualFold(os.Getenv("COOKIE_SECURE"), "true"),
 	}
 	mux := http.NewServeMux()
@@ -126,7 +128,7 @@ func (server *Server) contents(writer http.ResponseWriter, request *http.Request
 			writeError(writer, http.StatusForbidden, "editor access is required")
 			return
 		}
-		request.Body = http.MaxBytesReader(writer, request.Body, 2<<20)
+		request.Body = http.MaxBytesReader(writer, request.Body, maxDocumentBodyBytes)
 		decoder := json.NewDecoder(request.Body)
 		decoder.UseNumber()
 		var input domain.ContentInput
@@ -135,6 +137,34 @@ func (server *Server) contents(writer http.ResponseWriter, request *http.Request
 			return
 		}
 		input.AuthorID = user.ID
+		bodyMarkdown := input.BodyMarkdown
+		input.SearchText = domain.SearchTextFromMarkdown(bodyMarkdown)
+		if input.ID == "" {
+			id, err := domain.NewID()
+			if err != nil {
+				server.internalError(writer, err)
+				return
+			}
+			input.ID = id
+		}
+		if server.contentStore != nil {
+			key, hash, size, cleanup, err := stageDocument(request.Context(), server.contentStore, "contents", input.ID, 1, bodyMarkdown)
+			if err != nil {
+				writeError(writer, http.StatusUnprocessableEntity, err.Error())
+				return
+			}
+			input.BodyMarkdown = ""
+			input.BodyObjectKey, input.BodyRevision, input.BodyHash, input.BodySize = key, 1, hash, size
+			content, err := server.repository.CreateContent(request.Context(), input)
+			if err != nil {
+				cleanup()
+				writeError(writer, http.StatusUnprocessableEntity, err.Error())
+				return
+			}
+			content.BodyMarkdown = bodyMarkdown
+			writeJSON(writer, http.StatusCreated, content)
+			return
+		}
 		content, err := server.repository.CreateContent(request.Context(), input)
 		if err != nil {
 			writeError(writer, http.StatusUnprocessableEntity, err.Error())
@@ -180,12 +210,34 @@ func (server *Server) contentBySlug(writer http.ResponseWriter, request *http.Re
 			writeError(writer, http.StatusForbidden, "only the author or an administrator can edit this content")
 			return
 		}
-		request.Body = http.MaxBytesReader(writer, request.Body, 2<<20)
+		request.Body = http.MaxBytesReader(writer, request.Body, maxDocumentBodyBytes)
 		decoder := json.NewDecoder(request.Body)
 		decoder.UseNumber()
 		var input domain.ContentInput
 		if err := decoder.Decode(&input); err != nil {
 			writeError(writer, http.StatusBadRequest, "invalid JSON body")
+			return
+		}
+		bodyMarkdown := input.BodyMarkdown
+		input.SearchText = domain.SearchTextFromMarkdown(bodyMarkdown)
+		input.ID = current.ID
+		if server.contentStore != nil {
+			revision := current.BodyRevision + 1
+			key, hash, size, cleanup, err := stageDocument(request.Context(), server.contentStore, "contents", current.ID, revision, bodyMarkdown)
+			if err != nil {
+				writeError(writer, http.StatusUnprocessableEntity, err.Error())
+				return
+			}
+			input.BodyMarkdown = ""
+			input.BodyObjectKey, input.BodyRevision, input.BodyHash, input.BodySize = key, revision, hash, size
+			updated, err := server.repository.UpdateContent(request.Context(), slug, input)
+			if err != nil {
+				cleanup()
+				writeError(writer, http.StatusUnprocessableEntity, err.Error())
+				return
+			}
+			updated.BodyMarkdown = bodyMarkdown
+			writeJSON(writer, http.StatusOK, updated)
 			return
 		}
 		updated, err := server.repository.UpdateContent(request.Context(), slug, input)
@@ -236,6 +288,11 @@ func (server *Server) readContent(writer http.ResponseWriter, request *http.Requ
 		} else {
 			writeError(writer, http.StatusNotFound, "content not found")
 		}
+		return
+	}
+	content, err = readDocument(request.Context(), server.contentStore, content)
+	if err != nil {
+		server.internalError(writer, err)
 		return
 	}
 	writeJSON(writer, http.StatusOK, content)

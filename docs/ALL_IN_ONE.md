@@ -25,13 +25,158 @@ volume  volume                    ├── mysql/ structured data
 
 All-in-one has deliberately coupled upgrades, restarts, CPU/memory limits, and failure recovery. It is not suitable for HA or horizontal scaling. A single container failure stops all three processes. Keep external backups even though both data directories share one named volume.
 
-## One-command start
+## Choose the startup path
+
+There are two valid paths:
+
+| Situation | Command | Builds the image? |
+| --- | --- | --- |
+| The target machine already loaded a release image | `make all-in-one-start` | No |
+| The target machine has the source checkout and should compile | `make all-in-one-deploy` | Yes |
+
+The image-only path is the one to use after importing
+`bc-atlas-cms-all-in-one:2026.08.16-storage`. It still needs the Compose file and a
+private `.env.all-in-one` on the target machine; the image itself does not contain
+deployment passwords or host port settings.
+
+## Start an already-loaded image
+
+Copy these files from the repository to the target machine:
+
+```text
+docker-compose.all-in-one.yml
+scripts/deploy-all-in-one.sh
+Makefile
+.env.all-in-one.example
+```
+
+Create the private configuration:
+
+```bash
+cp .env.all-in-one.example .env.all-in-one
+chmod 600 .env.all-in-one
+```
+
+Set at least these values in `.env.all-in-one`:
+
+```dotenv
+AIO_IMAGE=bc-atlas-cms-all-in-one
+AIO_TAG=2026.08.16-storage
+APP_BIND=127.0.0.1
+APP_PORT=8080
+PUBLIC_BASE_URL=http://localhost:8080
+COOKIE_SECURE=false
+
+MYSQL_PASSWORD=generate-a-long-private-value
+MYSQL_ROOT_PASSWORD=generate-a-different-private-value
+MINIO_ROOT_PASSWORD=generate-a-different-private-value
+ADMIN_EMAIL=owner@example.com
+ADMIN_PASSWORD=generate-a-long-private-value
+```
+
+Use different values for the MySQL application user, MySQL root, MinIO, and the
+B.C owner account. Do not commit this file or put it in a Docker build argument.
+
+Start without rebuilding:
+
+```bash
+make all-in-one-start
+```
+
+The equivalent explicit command is:
+
+```bash
+docker compose \
+  --env-file .env.all-in-one \
+  -f docker-compose.all-in-one.yml \
+  up -d --no-build --remove-orphans
+```
+
+`--no-build` is important: it guarantees that Compose uses the image already
+loaded on the machine instead of trying to compile a new one.
+
+## Code changes and in-container compilation
+
+The release image also contains the pinned Node/npm and Go toolchains from the
+base image. It does not contain your working source tree. Keep the Git checkout
+on the host (or in a persistent workspace volume) and mount it into a temporary
+compiler container. Override the image entrypoint with `bash`; this prevents
+the MySQL, MinIO, and Go runtime processes from starting during compilation.
+
+From the repository checkout:
+
+```bash
+docker compose \
+  -f docker-compose.dev.yml \
+  run --rm dev
+```
+
+The equivalent `docker run` form is also supported, but the Compose file keeps
+the workspace and dependency caches consistent between sessions. It also mounts
+the All-in-One runtime data volume at `/data` as read-only, so the development
+container can inspect or back up the current MySQL and MinIO files without
+starting either middleware service.
+
+The default shared volume name is:
+
+```text
+bc-atlas-cms-all-in-one_all-in-one-data
+```
+
+If the deployment uses a custom volume name, set the same value in both Compose
+commands:
+
+```bash
+AIO_DATA_VOLUME_NAME=bc-production-data \
+docker compose -f docker-compose.dev.yml run --rm dev
+```
+
+Do not write directly to `/data/mysql` or `/data/minio` while the runtime
+container is active. Use MySQL-aware dumps and MinIO/S3 operations for backups
+and migrations.
+
+Inside the container, change code and run the checks manually:
+
+```bash
+npm ci
+npm run build
+npm run test:sites
+go test ./...
+go build -trimpath -o bin/bc-cms ./server/cmd/api
+go build -trimpath -o bin/bc-content-storage ./server/cmd/content-storage
+```
+
+This step does not need `MYSQL_PASSWORD`, `MINIO_ROOT_PASSWORD`, or
+`ADMIN_PASSWORD`, because no middleware or application server is running. The
+compiled `bin/` files are written into the mounted checkout.
+
+After a code change is validated, build a new immutable deployment image from
+the checkout using `Dockerfile.all-in-one` and a new tag. Do not use
+`docker commit` for releases; it would omit the reproducible build inputs:
+
+```bash
+docker build \
+  --build-arg BASE_IMAGE_REF=bc-atlas-cms-base:2026.08.12 \
+  -f Dockerfile.all-in-one \
+  -t bc-atlas-cms-all-in-one:2026.08.17 .
+```
+
+Then point `AIO_TAG` at the new tag and use the normal runtime startup path.
+The development shell and the runtime Compose stack are intentionally
+separate concerns.
+
+## One-command build and start
 
 ```bash
 make all-in-one-deploy
 ```
 
-The first run creates `.env.all-in-one` with mode `0600`, generates random hexadecimal secrets, builds and verifies `Dockerfile.base`, builds `Dockerfile.all-in-one`, starts the container, waits for `/api/health`, and prints the generated owner password once.
+This source-build path creates `.env.all-in-one` with mode `0600`, generates
+random hexadecimal secrets, builds and verifies `Dockerfile.base`, builds
+`Dockerfile.all-in-one`, starts the container, waits for `/api/health`, and
+prints the generated owner password once. Do not use it on a machine that only
+has the imported release image unless the complete source checkout and build
+dependencies are also present.
 
 Useful commands:
 
@@ -42,6 +187,29 @@ make all-in-one-down
 ```
 
 `make all-in-one-down` preserves the `all-in-one-data` named volume. Do not add `-v` unless both MySQL and MinIO data should be permanently deleted.
+
+## Startup sequence and first-run data
+
+For the imported image, the operational order is:
+
+1. copy the Compose files and create `.env.all-in-one`
+2. choose the host application and maintenance ports
+3. set the MySQL, MinIO, and B.C administrator credentials
+4. run `make all-in-one-start`
+5. wait for `/api/health` and inspect `make all-in-one-status`
+6. run content migration/reindex only if this is an existing data set
+
+The All-in-One entrypoint starts MySQL, waits for it, starts MinIO, waits for
+its readiness endpoint, and then starts the Go application. A fresh database
+gets the normal SQL schema migrations during application startup. The
+`bc-content-storage` commands are for moving legacy inline Markdown into
+MinIO, rebuilding the MySQL search projection, and verifying object hashes;
+they are not required for an empty new installation.
+
+Passwords in `.env.all-in-one` are used on first initialization. Changing an
+environment value later does not rewrite credentials already stored in an
+existing `all-in-one-data` volume; rotate credentials inside the service or
+perform a planned reinitialization after a backup.
 
 Build only:
 
@@ -100,9 +268,13 @@ The left side is the host listener; the container ports remain fixed at `8080`, 
 
 Use `APP_BIND=127.0.0.1` when a local tunnel or reverse proxy is the only public ingress. Only set `APP_BIND=0.0.0.0` when direct LAN access is intentional. Keep MySQL and both MinIO ports on `127.0.0.1`; do not expose or forward them to the public internet.
 
-After an edit, apply the configuration with:
+After an edit, apply the configuration with the command matching your path:
 
 ```bash
+# Imported image:
+make all-in-one-start
+
+# Source build:
 make all-in-one-deploy
 ```
 
@@ -138,3 +310,47 @@ A filesystem copy taken while MySQL is actively writing is not automatically a c
 No, not by default. The Go process already serves the compiled React application, APIs, RSS, and same-origin `/media/**` responses, including HTTP Range for video. If the tunnel already terminates HTTPS and forwards to `127.0.0.1:APP_PORT`, another proxy adds no required application feature.
 
 Use an external Nginx layer when it owns a real edge concern: TLS certificates, multiple domains or applications on one host, IP allowlists, rate limiting, or centralized access logs. Keep it outside the all-in-one image so it can be upgraded independently. A starting configuration is available at `deploy/nginx/bc-atlas.conf.example`; its upload limit matches the application's current 512 MiB request limit and upload buffering is disabled.
+
+### Routing the service under `/bc-blog`
+
+If Nginx and the `bc-blog-dev-1` container share a Docker network, the following
+locations can be added to the existing `server` block. The trailing slash in
+`proxy_pass` deliberately removes the `/bc-blog` prefix before forwarding:
+
+```nginx
+location = /bc-blog {
+    return 301 /bc-blog/;
+}
+
+location ^~ /bc-blog/ {
+    proxy_pass http://bc-blog-dev-1:8080/;
+    proxy_http_version 1.1;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Prefix /bc-blog;
+
+    client_max_body_size 512m;
+    proxy_request_buffering off;
+    proxy_connect_timeout 60s;
+    proxy_send_timeout 600s;
+    proxy_read_timeout 600s;
+}
+```
+
+The container name is resolvable only from a container attached to the same
+Docker network. If Nginx runs on the host, publish the application port and use
+`proxy_pass http://127.0.0.1:8080/;` instead. A copyable snippet is kept at
+`deploy/nginx/bc-blog-subpath.conf.example`.
+
+The current frontend uses root-relative URLs such as `/api`, `/media`, and
+`/rss.xml`. Consequently, a path prefix is not a complete deployment boundary
+without also configuring the frontend/API base path; the `X-Forwarded-Prefix`
+header alone does not rewrite browser requests. The stable no-code option is a
+dedicated hostname (for example `blog.example.com`) with `location /` proxying
+to the container, as shown in `deploy/nginx/bc-atlas.conf.example`. Use the
+`/bc-blog` locations only after the application has been built with a matching
+base path or when the remaining root-relative routes are deliberately mapped
+by the surrounding Nginx configuration.

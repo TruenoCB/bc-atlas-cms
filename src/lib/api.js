@@ -3,6 +3,9 @@ import { seedContents } from "../data/seedContents.js";
 import { seedKnowledgeBases, seedKnowledgePages } from "../data/seedKnowledge.js";
 
 const STORAGE_KEY = "bc.cms.footprints.v1";
+// Seed records make the standalone Vite experience useful, but they must never
+// masquerade as a live site's data when a production API is unavailable.
+const allowDemoFallback = import.meta.env.DEV;
 
 function readLocalFootprints() {
   try {
@@ -42,7 +45,7 @@ export async function listFootprints() {
     const payload = await request("/api/footprints");
     return payload.items ?? payload;
   } catch (error) {
-    if (error instanceof ApiError) throw error;
+    if (error instanceof ApiError || !allowDemoFallback) throw error;
     return readLocalFootprints();
   }
 }
@@ -57,7 +60,7 @@ export async function listContents(filters = {}) {
     const payload = await request(`/api/contents${query.size ? `?${query}` : ""}`);
     return payload.items ?? [];
   } catch (error) {
-    if (error instanceof ApiError) throw error;
+    if (error instanceof ApiError || !allowDemoFallback) throw error;
     return seedContents.filter((item) => (!filters.type || item.type === filters.type)
       && (!filters.tag || item.tags?.some((tag) => tag.slug === filters.tag))
       && (!filters.status || filters.status === "all" || item.status === filters.status));
@@ -143,9 +146,9 @@ export async function logout() {
 export async function listKnowledgeBases() {
   try {
     const payload = await request("/api/knowledge-bases");
-    return payload.items?.length ? payload.items : seedKnowledgeBases;
+    return payload.items ?? [];
   } catch (error) {
-    if (error instanceof ApiError) throw error;
+    if (error instanceof ApiError || !allowDemoFallback) throw error;
     return seedKnowledgeBases;
   }
 }
@@ -157,9 +160,9 @@ export async function createKnowledgeBase(input) {
 export async function listKnowledgePages(baseSlug) {
   try {
     const payload = await request(`/api/knowledge-bases/${encodeURIComponent(baseSlug)}/pages`);
-    return payload.items?.length ? payload.items : (seedKnowledgePages[baseSlug] ?? []);
+    return payload.items ?? [];
   } catch (error) {
-    if (error instanceof ApiError) throw error;
+    if (error instanceof ApiError || !allowDemoFallback) throw error;
     return seedKnowledgePages[baseSlug] ?? [];
   }
 }

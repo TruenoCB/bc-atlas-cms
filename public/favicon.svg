@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title>B.C favicon</title>
+  <rect width="64" height="64" rx="12" fill="#08090b"/>
+  <g fill="#b477ff" shape-rendering="crispEdges">
+    <!-- B -->
+    <rect x="9" y="13" width="5" height="38"/>
+    <rect x="14" y="13" width="12" height="5"/>
+    <rect x="14" y="29" width="12" height="5"/>
+    <rect x="14" y="46" width="12" height="5"/>
+    <rect x="26" y="18" width="5" height="11"/>
+    <rect x="26" y="34" width="5" height="12"/>
+    <!-- separator -->
+    <rect x="32" y="45" width="5" height="5"/>
+    <!-- C -->
+    <rect x="45" y="13" width="11" height="5"/>
+    <rect x="40" y="18" width="5" height="28"/>
+    <rect x="45" y="46" width="11" height="5"/>
+  </g>
+</svg>

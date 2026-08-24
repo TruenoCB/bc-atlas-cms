@@ -59,18 +59,27 @@ type KnowledgePage struct {
 	CreatedAt       time.Time `json:"createdAt"`
 	UpdatedAt       time.Time `json:"updatedAt"`
 	Locked          bool      `json:"locked,omitempty"`
+	BodyObjectKey   string    `json:"-"`
+	BodyRevision    int       `json:"-"`
+	BodyHash        string    `json:"-"`
+	BodySize        int64     `json:"-"`
 }
 
 type KnowledgePageInput struct {
-	ParentID     string `json:"parentId"`
-	AuthorID     string `json:"-"`
-	Slug         string `json:"slug"`
-	Title        string `json:"title"`
-	Summary      string `json:"summary"`
-	BodyMarkdown string `json:"bodyMarkdown"`
-	Position     int    `json:"position"`
-	Status       string `json:"status"`
-	Visibility   string `json:"visibility"`
+	ID            string `json:"-"`
+	ParentID      string `json:"parentId"`
+	AuthorID      string `json:"-"`
+	Slug          string `json:"slug"`
+	Title         string `json:"title"`
+	Summary       string `json:"summary"`
+	BodyMarkdown  string `json:"bodyMarkdown"`
+	Position      int    `json:"position"`
+	Status        string `json:"status"`
+	Visibility    string `json:"visibility"`
+	BodyObjectKey string `json:"-"`
+	BodyRevision  int    `json:"-"`
+	BodyHash      string `json:"-"`
+	BodySize      int64  `json:"-"`
 }
 
 func (input *KnowledgePageInput) Validate() error {

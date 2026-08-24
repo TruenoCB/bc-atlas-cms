@@ -17,6 +17,17 @@ const PublishFootprintDialog = lazy(() => import("./components/PublishFootprintD
 const ArticleReader = lazy(() => import("./components/ArticleReader.jsx").then((module) => ({ default: module.ArticleReader })));
 const KnowledgeHub = lazy(() => import("./components/KnowledgeHub.jsx").then((module) => ({ default: module.KnowledgeHub })));
 
+function publicationTimestamp(item) {
+  const timestamp = Date.parse(item?.publishedAt ?? item?.updatedAt ?? item?.createdAt ?? "");
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function latestPublished(items, predicate) {
+  return items
+    .filter((item) => item.status === "published" && predicate(item))
+    .sort((left, right) => publicationTimestamp(right) - publicationTimestamp(left))[0] ?? null;
+}
+
 export function App() {
   const [footprints, setFootprints] = useState([]);
   const [contents, setContents] = useState([]);
@@ -220,8 +231,8 @@ export function App() {
     setView(item);
   };
 
-  const featuredEssay = contents.find((item) => item.status === "published" && item.type === "article" && !item.tags?.some((tag) => tag.slug === "footprint")) ?? footprints[0];
-  const featuredThought = contents.find((item) => item.status === "published" && item.type === "thought");
+  const featuredEssay = latestPublished(contents, (item) => item.type === "article" && !item.tags?.some((tag) => tag.slug === "footprint"));
+  const featuredThought = latestPublished(contents, (item) => item.type === "thought");
   const canPublish = ["editor", "admin"].includes(user?.role);
   const mobileNavItems = useMemo(() => [
     { label: "Read", links: publicModules.filter((module) => ["Essays", "Thoughts"].includes(module.view)).map((module) => ({ label: module.label, view: module.view })) },
@@ -273,17 +284,21 @@ export function App() {
         <section className="editorial-panel">
           <div className="editorial-content">
             <div className="eyebrow">FEATURED ESSAY</div>
-            <h1>Building calm<br />systems in a<br />noisy world.</h1>
-            <p className="hero-summary">Notes on software, infrastructure,<br />and deliberate practice.</p>
-            <button className="read-action" type="button" onClick={() => openArticle(featuredEssay)}>
-              Read the essay <ArrowRight size={21} weight="light" />
-            </button>
+            <h1>{featuredEssay?.title ?? "Publish your first essay."}</h1>
+            <p className="hero-summary">{featuredEssay?.summary ?? "The newest published essay appears here automatically."}</p>
+            {featuredEssay ? (
+              <button className="read-action" type="button" onClick={() => openArticle(featuredEssay)}>
+                Read the essay <ArrowRight size={21} weight="light" />
+              </button>
+            ) : null}
           </div>
-          <button className="thought-row" type="button" onClick={() => featuredThought ? openArticle(featuredThought) : setView("Thoughts") }>
-            <strong>THOUGHT</strong><span className="thought-dash" />
-            <span>Make complexity visible before making it clever.</span>
-            <CaretRight size={17} />
-          </button>
+          {featuredThought ? (
+            <button className="thought-row" type="button" onClick={() => openArticle(featuredThought)}>
+              <strong>THOUGHT</strong><span className="thought-dash" />
+              <span>{featuredThought.title}</span>
+              <CaretRight size={17} />
+            </button>
+          ) : null}
         </section>
 
         <div className="column-divider" aria-hidden="true" />

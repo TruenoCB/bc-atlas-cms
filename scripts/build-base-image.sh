@@ -13,6 +13,7 @@ NODE_IMAGE_VALUE=${NODE_IMAGE:-node:24.18.1-bookworm-slim}
 GO_IMAGE_VALUE=${GO_IMAGE:-golang:1.24.8-bookworm}
 MINIO_SOURCE_REPOSITORY_VALUE=${MINIO_SOURCE_REPOSITORY:-https://github.com/minio/minio.git}
 MINIO_SOURCE_REF_VALUE=${MINIO_SOURCE_REF:-7aac2a2c5b7c882e68c1ce017d8256be2feea27f}
+MINIO_GOPROXY_VALUE=${MINIO_GOPROXY:-https://proxy.golang.org,direct}
 
 if ! command -v docker >/dev/null 2>&1; then
   printf 'Docker is required to build %s.\n' "$IMAGE_REF" >&2
@@ -29,7 +30,8 @@ set -- \
   --build-arg "NODE_IMAGE=$NODE_IMAGE_VALUE" \
   --build-arg "GO_IMAGE=$GO_IMAGE_VALUE" \
   --build-arg "MINIO_SOURCE_REPOSITORY=$MINIO_SOURCE_REPOSITORY_VALUE" \
-  --build-arg "MINIO_SOURCE_REF=$MINIO_SOURCE_REF_VALUE"
+  --build-arg "MINIO_SOURCE_REF=$MINIO_SOURCE_REF_VALUE" \
+  --build-arg "MINIO_GOPROXY=$MINIO_GOPROXY_VALUE"
 
 if [ "${NO_CACHE:-0}" = "1" ]; then
   set -- "$@" --no-cache

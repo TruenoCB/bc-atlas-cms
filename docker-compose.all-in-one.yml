@@ -41,3 +41,5 @@ services:
 
 volumes:
   all-in-one-data:
+    # Keep the volume name stable so the development Compose can mount it too.
+    name: "${AIO_DATA_VOLUME_NAME:-bc-atlas-cms-all-in-one_all-in-one-data}"

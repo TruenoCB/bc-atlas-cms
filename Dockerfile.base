@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 ARG MYSQL_IMAGE=mysql:8.4
 ARG NODE_IMAGE=node:24.18.1-bookworm-slim
 ARG GO_IMAGE=golang:1.24.8-bookworm
@@ -5,6 +7,7 @@ ARG GO_IMAGE=golang:1.24.8-bookworm
 FROM --platform=$BUILDPLATFORM ${GO_IMAGE} AS minio-source-build
 ARG MINIO_SOURCE_REPOSITORY=https://github.com/minio/minio.git
 ARG MINIO_SOURCE_REF=7aac2a2c5b7c882e68c1ce017d8256be2feea27f
+ARG MINIO_GOPROXY=https://proxy.golang.org,direct
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -18,9 +21,11 @@ RUN git init \
     && git checkout --detach FETCH_HEAD \
     && test "$(git rev-parse HEAD)" = "${MINIO_SOURCE_REF}" \
     && test "$(sed -n 's/^toolchain //p' go.mod)" = 'go1.24.8'
-RUN go mod download \
+RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
+    GOPROXY="${MINIO_GOPROXY}" go mod download \
     && MINIO_LDFLAGS="$(go run buildscripts/gen-ldflags.go)" \
-    && CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" go build -tags kqueue -trimpath \
+    && CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" GOPROXY="${MINIO_GOPROXY}" go build -tags kqueue -trimpath \
       -ldflags "${MINIO_LDFLAGS}" -o /out/minio . \
     && tar --exclude=.git -czf "/out/minio-source-${MINIO_SOURCE_REF}.tar.gz" . \
     && cp LICENSE /out/MINIO-LICENSE

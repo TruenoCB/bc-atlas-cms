@@ -34,10 +34,10 @@ npm run dev
 In another terminal:
 
 ```bash
-go run ./server/cmd/api
+npm run dev:api
 ```
 
-The frontend is available at `http://localhost:4173` and proxies `/api` and `/rss.xml` to the Go server on port `8080`.
+The frontend is available at `http://localhost:4173` and proxies `/api` and `/rss.xml` to the Go server on port `8080`. `dev:api` explicitly enables the seeded in-memory repository for UI development only. A deployed application requires `DATABASE_DSN`; it will not silently start with demo records when the database configuration is missing.
 
 ## One-command Docker deployment
 
@@ -130,11 +130,12 @@ Dockerfile.base              Reproducible MySQL + Node + Go + source MinIO paren
 Dockerfile.all-in-one        Portable app + MySQL + MinIO image
 docker-compose.yml           App + MySQL + MinIO stack
 docker-compose.all-in-one.yml Single-container stack and shared data volume
+docker-compose.dev.yml       Source-mounted Node/Go development shell
 ```
 
 ## Why only MySQL and S3 for now
 
-Those two services are sufficient for the current publishing milestone: MySQL owns transactional metadata, knowledge hierarchy, accounts, and sessions; MinIO owns large binary objects. When background media processing or large-corpus search arrives, add a queue/worker or search index as optional modules instead of making them prerequisites for ordinary reading and publishing.
+Those two services are sufficient for the current publishing milestone: MySQL owns transactional metadata, knowledge hierarchy, accounts, sessions, and the keyword-search projection; MinIO owns canonical Markdown plus large binary objects. When background media processing or large-corpus search arrives, add a queue/worker or dedicated search index as optional modules instead of making them prerequisites for ordinary reading and publishing.
 
 ## Maintenance documentation
 
@@ -149,6 +150,7 @@ Those two services are sufficient for the current publishing milestone: MySQL ow
 - [Build, image, and one-command deployment](docs/DEPLOYMENT.md)
 - [All-in-one image, credentials, ports, and Nginx](docs/ALL_IN_ONE.md)
 - [Middleware/toolchain base image and source MinIO build](docs/BASE_IMAGE.md)
+- [Build, directory layout, maintenance, and deployment runbook](docs/BUILD_OPERATIONS.md)
 
 ## Verification
 

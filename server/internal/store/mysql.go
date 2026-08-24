@@ -27,9 +27,16 @@ var commentsMigration string
 //go:embed migrations/004_knowledge.sql
 var knowledgeMigration string
 
+//go:embed migrations/005_content_storage.sql
+var contentStorageMigration string
+
 type MySQLRepository struct {
 	db *sql.DB
 }
+
+const contentColumns = `c.id, c.author_id, c.content_type, c.slug, c.title, c.summary,
+  c.body_markdown, c.body_object_key, c.body_revision, c.body_hash, c.body_size,
+  c.status, c.visibility, c.published_at, c.created_at, c.updated_at`
 
 func OpenMySQL(ctx context.Context, dsn string) (*MySQLRepository, error) {
 	db, err := sql.Open("mysql", dsn)
@@ -72,7 +79,7 @@ func (repository *MySQLRepository) CreateMediaObject(ctx context.Context, object
 }
 
 func (repository *MySQLRepository) Migrate(ctx context.Context) error {
-	for _, migration := range []string{initialMigration, membershipMigration, commentsMigration, knowledgeMigration} {
+	for _, migration := range []string{initialMigration, membershipMigration, commentsMigration, knowledgeMigration, contentStorageMigration} {
 		for _, statement := range strings.Split(migration, ";") {
 			statement = strings.TrimSpace(statement)
 			if statement == "" {
@@ -86,7 +93,40 @@ func (repository *MySQLRepository) Migrate(ctx context.Context) error {
 	if err := repository.ensureContentsAuthorColumn(ctx); err != nil {
 		return err
 	}
-	return repository.ensureKnowledgeBaseCoverColumn(ctx)
+	if err := repository.ensureKnowledgeBaseCoverColumn(ctx); err != nil {
+		return err
+	}
+	return repository.ensureContentStorageSchema(ctx)
+}
+
+func (repository *MySQLRepository) ensureContentStorageSchema(ctx context.Context) error {
+	columns := []struct {
+		table string
+		name  string
+		spec  string
+	}{
+		{table: "contents", name: "body_object_key", spec: "VARCHAR(512) NOT NULL DEFAULT '' AFTER body_markdown"},
+		{table: "contents", name: "body_revision", spec: "INT NOT NULL DEFAULT 0 AFTER body_object_key"},
+		{table: "contents", name: "body_hash", spec: "CHAR(64) NOT NULL DEFAULT '' AFTER body_revision"},
+		{table: "contents", name: "body_size", spec: "BIGINT NOT NULL DEFAULT 0 AFTER body_hash"},
+		{table: "knowledge_pages", name: "body_object_key", spec: "VARCHAR(512) NOT NULL DEFAULT '' AFTER body_markdown"},
+		{table: "knowledge_pages", name: "body_revision", spec: "INT NOT NULL DEFAULT 0 AFTER body_object_key"},
+		{table: "knowledge_pages", name: "body_hash", spec: "CHAR(64) NOT NULL DEFAULT '' AFTER body_revision"},
+		{table: "knowledge_pages", name: "body_size", spec: "BIGINT NOT NULL DEFAULT 0 AFTER body_hash"},
+	}
+	for _, column := range columns {
+		var count int
+		if err := repository.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`, column.table, column.name).Scan(&count); err != nil {
+			return err
+		}
+		if count == 0 {
+			if _, err := repository.db.ExecContext(ctx, fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", column.table, column.name, column.spec)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (repository *MySQLRepository) ensureKnowledgeBaseCoverColumn(ctx context.Context) error {
@@ -140,9 +180,13 @@ func (repository *MySQLRepository) CreateContent(ctx context.Context, input doma
 	if err := input.Validate(); err != nil {
 		return domain.Content{}, err
 	}
-	id, err := domain.NewID()
-	if err != nil {
-		return domain.Content{}, err
+	id := input.ID
+	if id == "" {
+		var err error
+		id, err = domain.NewID()
+		if err != nil {
+			return domain.Content{}, err
+		}
 	}
 	now := time.Now().UTC()
 	tx, err := repository.db.BeginTx(ctx, nil)
@@ -152,9 +196,12 @@ func (repository *MySQLRepository) CreateContent(ctx context.Context, input doma
 	defer tx.Rollback()
 
 	_, err = tx.ExecContext(ctx, `INSERT INTO contents
-      (id, author_id, content_type, slug, title, summary, body_markdown, status, visibility, published_at, created_at, updated_at)
-	      VALUES (?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, input.AuthorID, input.Type, input.Slug, input.Title, input.Summary, input.BodyMarkdown, input.Status, input.Visibility, now, now, now)
+      (id, author_id, content_type, slug, title, summary, body_markdown, body_object_key, body_revision, body_hash, body_size,
+       status, visibility, published_at, created_at, updated_at)
+      VALUES (?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, input.AuthorID, input.Type, input.Slug, input.Title, input.Summary, input.BodyMarkdown,
+		input.BodyObjectKey, input.BodyRevision, input.BodyHash, input.BodySize,
+		input.Status, input.Visibility, now, now, now)
 	if err != nil {
 		return domain.Content{}, err
 	}
@@ -182,19 +229,26 @@ func (repository *MySQLRepository) CreateContent(ctx context.Context, input doma
 			}
 		}
 	}
+	searchText := input.SearchText
+	if strings.TrimSpace(searchText) == "" {
+		searchText = domain.SearchTextFromMarkdown(input.BodyMarkdown)
+	}
+	if err := upsertContentSearch(ctx, tx, id, input.Title, input.Summary, searchText, tagsSearchText(input.Tags), now); err != nil {
+		return domain.Content{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return domain.Content{}, err
 	}
 	return domain.Content{
 		ID: id, AuthorID: input.AuthorID, Type: input.Type, Slug: input.Slug, Title: input.Title, Summary: input.Summary,
 		BodyMarkdown: input.BodyMarkdown, Status: input.Status, Visibility: input.Visibility,
+		BodyObjectKey: input.BodyObjectKey, BodyRevision: input.BodyRevision, BodyHash: input.BodyHash, BodySize: input.BodySize,
 		PublishedAt: now, CreatedAt: now, UpdatedAt: now, Tags: input.Tags,
 	}, nil
 }
 
 func (repository *MySQLRepository) ListContents(ctx context.Context, filter domain.ContentFilter) ([]domain.Content, error) {
-	query := `SELECT DISTINCT c.id, c.author_id, c.content_type, c.slug, c.title, c.summary, c.body_markdown,
-      c.status, c.visibility, c.published_at, c.created_at, c.updated_at FROM contents c`
+	query := `SELECT DISTINCT ` + contentColumns + ` FROM contents c LEFT JOIN content_search cs ON cs.content_id = c.id`
 	arguments := make([]any, 0, 6)
 	conditions := make([]string, 0, 4)
 	if filter.Tag != "" {
@@ -211,9 +265,9 @@ func (repository *MySQLRepository) ListContents(ctx context.Context, filter doma
 		arguments = append(arguments, filter.Status)
 	}
 	if queryText := strings.ToLower(strings.TrimSpace(filter.Query)); queryText != "" {
-		conditions = append(conditions, "(LOWER(c.title) LIKE ? OR LOWER(c.summary) LIKE ? OR LOWER(c.body_markdown) LIKE ?)")
+		conditions = append(conditions, "(LOWER(c.title) LIKE ? OR LOWER(c.summary) LIKE ? OR LOWER(COALESCE(cs.body_text, c.body_markdown)) LIKE ? OR LOWER(COALESCE(cs.tags_text, '')) LIKE ?)")
 		pattern := "%" + queryText + "%"
-		arguments = append(arguments, pattern, pattern, pattern)
+		arguments = append(arguments, pattern, pattern, pattern, pattern)
 	}
 	if len(conditions) > 0 {
 		query += " WHERE " + strings.Join(conditions, " AND ")
@@ -249,8 +303,9 @@ func (repository *MySQLRepository) UpdateContent(ctx context.Context, slug strin
 	}
 	defer tx.Rollback()
 	var contentID, currentStatus string
+	var currentBodyRevision int
 	var publishedAt time.Time
-	if err := tx.QueryRowContext(ctx, `SELECT id, status, published_at FROM contents WHERE slug = ? FOR UPDATE`, slug).Scan(&contentID, &currentStatus, &publishedAt); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT id, status, body_revision, published_at FROM contents WHERE slug = ? FOR UPDATE`, slug).Scan(&contentID, &currentStatus, &currentBodyRevision, &publishedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return domain.Content{}, ErrNotFound
 		}
@@ -260,10 +315,31 @@ func (repository *MySQLRepository) UpdateContent(ctx context.Context, slug strin
 	if input.Status == "published" && currentStatus != "published" {
 		publishedAt = now
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE contents SET content_type = ?, slug = ?, title = ?, summary = ?,
-		body_markdown = ?, status = ?, visibility = ?, published_at = ?, updated_at = ? WHERE id = ?`, input.Type, input.Slug,
-		input.Title, input.Summary, input.BodyMarkdown, input.Status, input.Visibility, publishedAt, now, contentID); err != nil {
+	if input.BodyObjectKey != "" && currentBodyRevision != input.BodyRevision-1 {
+		return domain.Content{}, ErrConflict
+	}
+	updateQuery := `UPDATE contents SET content_type = ?, slug = ?, title = ?, summary = ?,
+		body_markdown = ?, body_object_key = ?, body_revision = ?, body_hash = ?, body_size = ?,
+		status = ?, visibility = ?, published_at = ?, updated_at = ? WHERE id = ?`
+	updateArgs := []any{input.Type, input.Slug,
+		input.Title, input.Summary, input.BodyMarkdown, input.BodyObjectKey, input.BodyRevision, input.BodyHash, input.BodySize,
+		input.Status, input.Visibility, publishedAt, now, contentID}
+	if input.BodyObjectKey != "" {
+		updateQuery += " AND body_revision = ?"
+		updateArgs = append(updateArgs, input.BodyRevision-1)
+	}
+	result, err := tx.ExecContext(ctx, updateQuery, updateArgs...)
+	if err != nil {
 		return domain.Content{}, err
+	}
+	if input.BodyObjectKey != "" {
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			return domain.Content{}, err
+		}
+		if rowsAffected != 1 {
+			return domain.Content{}, ErrConflict
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM content_tags WHERE content_id = ?`, contentID); err != nil {
 		return domain.Content{}, err
@@ -291,6 +367,13 @@ func (repository *MySQLRepository) UpdateContent(ctx context.Context, slug strin
 			}
 		}
 	}
+	searchText := input.SearchText
+	if strings.TrimSpace(searchText) == "" {
+		searchText = domain.SearchTextFromMarkdown(input.BodyMarkdown)
+	}
+	if err := upsertContentSearch(ctx, tx, contentID, input.Title, input.Summary, searchText, tagsSearchText(input.Tags), now); err != nil {
+		return domain.Content{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return domain.Content{}, err
 	}
@@ -314,9 +397,8 @@ func (repository *MySQLRepository) DeleteContent(ctx context.Context, slug strin
 
 func (repository *MySQLRepository) ListFootprints(ctx context.Context) ([]domain.Content, error) {
 	rows, err := repository.db.QueryContext(ctx, `
-	    SELECT DISTINCT c.id, c.author_id, c.content_type, c.slug, c.title, c.summary, c.body_markdown,
-      c.status, c.visibility, c.published_at, c.created_at, c.updated_at
-    FROM contents c
+	    SELECT DISTINCT `+contentColumns+`
+    FROM contents c LEFT JOIN content_search cs ON cs.content_id = c.id
     JOIN content_tags ct ON ct.content_id = c.id
     JOIN tags t ON t.id = ct.tag_id
     WHERE t.slug = 'footprint' AND c.status = 'published'
@@ -341,8 +423,7 @@ func (repository *MySQLRepository) ListFootprints(ctx context.Context) ([]domain
 }
 
 func (repository *MySQLRepository) FindBySlug(ctx context.Context, slug string) (domain.Content, error) {
-	row := repository.db.QueryRowContext(ctx, `SELECT id, author_id, content_type, slug, title, summary, body_markdown,
-    status, visibility, published_at, created_at, updated_at FROM contents WHERE slug = ? LIMIT 1`, slug)
+	row := repository.db.QueryRowContext(ctx, `SELECT `+contentColumns+` FROM contents c WHERE c.slug = ? LIMIT 1`, slug)
 	content, err := scanContent(row)
 	if err != nil {
 		return domain.Content{}, err
@@ -358,11 +439,36 @@ type scanner interface {
 func scanContent(row scanner) (domain.Content, error) {
 	var content domain.Content
 	var authorID sql.NullString
+	var bodyObjectKey, bodyHash sql.NullString
 	err := row.Scan(&content.ID, &authorID, &content.Type, &content.Slug, &content.Title, &content.Summary,
-		&content.BodyMarkdown, &content.Status, &content.Visibility, &content.PublishedAt,
+		&content.BodyMarkdown, &bodyObjectKey, &content.BodyRevision, &bodyHash, &content.BodySize,
+		&content.Status, &content.Visibility, &content.PublishedAt,
 		&content.CreatedAt, &content.UpdatedAt)
 	content.AuthorID = authorID.String
+	content.BodyObjectKey = bodyObjectKey.String
+	content.BodyHash = bodyHash.String
 	return content, err
+}
+
+func upsertContentSearch(ctx context.Context, tx *sql.Tx, contentID, title, summary, bodyText, tagsText string, updatedAt time.Time) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO content_search
+      (content_id, title, summary, body_text, tags_text, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE title = VALUES(title), summary = VALUES(summary), body_text = VALUES(body_text),
+        tags_text = VALUES(tags_text), updated_at = VALUES(updated_at)`,
+		contentID, title, summary, bodyText, tagsText, updatedAt)
+	return err
+}
+
+func tagsSearchText(tags []domain.Tag) string {
+	parts := make([]string, 0, len(tags)*2)
+	for _, tag := range tags {
+		parts = append(parts, tag.Slug, tag.Name)
+		for key, value := range tag.Properties {
+			parts = append(parts, key, fmt.Sprint(value))
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 func (repository *MySQLRepository) loadTags(ctx context.Context, contentID string) ([]domain.Tag, error) {
