@@ -78,6 +78,44 @@ func (repository *MySQLRepository) CreateMediaObject(ctx context.Context, object
 	return err
 }
 
+func (repository *MySQLRepository) ListMediaObjects(ctx context.Context, filter domain.MediaFilter) ([]domain.MediaObject, error) {
+	where := []string{"1 = 1"}
+	args := []any{}
+	query := strings.TrimSpace(filter.Query)
+	if query != "" {
+		pattern := "%" + query + "%"
+		where = append(where, "(original_name LIKE ? OR object_key LIKE ? OR content_type LIKE ?)")
+		args = append(args, pattern, pattern, pattern)
+	}
+	switch filter.Kind {
+	case "image", "video", "audio":
+		where = append(where, "content_type LIKE ?")
+		args = append(args, filter.Kind+"/%")
+	case "document":
+		where = append(where, "content_type NOT LIKE 'image/%' AND content_type NOT LIKE 'video/%' AND content_type NOT LIKE 'audio/%'")
+	}
+	limit := filter.Limit
+	if limit <= 0 || limit > 250 {
+		limit = 250
+	}
+	args = append(args, limit)
+	rows, err := repository.db.QueryContext(ctx, `SELECT id, object_key, bucket_name, original_name, content_type, size_bytes, created_at
+      FROM media_objects WHERE `+strings.Join(where, " AND ")+` ORDER BY created_at DESC LIMIT ?`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []domain.MediaObject{}
+	for rows.Next() {
+		var item domain.MediaObject
+		if err := rows.Scan(&item.ID, &item.ObjectKey, &item.BucketName, &item.OriginalName, &item.ContentType, &item.SizeBytes, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func (repository *MySQLRepository) Migrate(ctx context.Context) error {
 	for _, migration := range []string{initialMigration, membershipMigration, commentsMigration, knowledgeMigration, contentStorageMigration} {
 		for _, statement := range strings.Split(migration, ";") {
@@ -96,7 +134,33 @@ func (repository *MySQLRepository) Migrate(ctx context.Context) error {
 	if err := repository.ensureKnowledgeBaseCoverColumn(ctx); err != nil {
 		return err
 	}
-	return repository.ensureContentStorageSchema(ctx)
+	if err := repository.ensureContentStorageSchema(ctx); err != nil {
+		return err
+	}
+	return repository.ensureMediaObjectIndexes(ctx)
+}
+
+func (repository *MySQLRepository) ensureMediaObjectIndexes(ctx context.Context) error {
+	indexes := []struct {
+		name string
+		spec string
+	}{
+		{name: "idx_media_objects_created", spec: "(created_at)"},
+		{name: "idx_media_objects_type_created", spec: "(content_type, created_at)"},
+	}
+	for _, index := range indexes {
+		var count int
+		if err := repository.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'media_objects' AND INDEX_NAME = ?`, index.name).Scan(&count); err != nil {
+			return err
+		}
+		if count == 0 {
+			if _, err := repository.db.ExecContext(ctx, fmt.Sprintf("CREATE INDEX %s ON media_objects %s", index.name, index.spec)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (repository *MySQLRepository) ensureContentStorageSchema(ctx context.Context) error {

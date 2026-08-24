@@ -68,7 +68,7 @@ function archiveByDate(items) {
   }));
 }
 
-export function ContentHub({ section, contents, onSelect, onPublish, onEdit, onDuplicate, onStatusChange, onDelete, canManage = () => false, canPublish }) {
+export function ContentHub({ section, contents, onSelect, onPublish, onEdit, onDuplicate, onStatusChange, onDelete, onOpenMediaLibrary, canManage = () => false, canPublish }) {
   const [query, setQuery] = useState("");
   const [selectedTag, setSelectedTag] = useState("all");
   const [workspaceStatus, setWorkspaceStatus] = useState("all");
@@ -104,7 +104,10 @@ export function ContentHub({ section, contents, onSelect, onPublish, onEdit, onD
       <section className="content-hub workspace-hub">
         <div className="hub-heading workspace-heading">
           <div><div className="eyebrow">OWNER WORKSPACE</div><h1>Publishing control,<br />without dashboard noise.</h1></div>
-          <PrimarySpecularButton size="sm" onClick={onPublish}><Plus size={16} />New content</PrimarySpecularButton>
+          {canPublish ? <div className="workspace-heading-actions">
+              <SpecularButton {...specularControlProps} className="workspace-media-action" onClick={onOpenMediaLibrary}><ImageSquare size={16} />Media library</SpecularButton>
+              <PrimarySpecularButton size="sm" onClick={onPublish}><Plus size={16} />New content</PrimarySpecularButton>
+            </div> : null}
         </div>
         <div className="workspace-metrics">
           {[["all", "All content"], ["draft", "Drafts"], ["published", "Published"], ["archived", "Archived"]].map(([status, label]) => (

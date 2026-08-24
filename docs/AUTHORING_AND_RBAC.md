@@ -39,6 +39,34 @@ same-origin `/media/...` route, not a public MinIO URL; the browser never
 receives S3 credentials. The separate **Title image** control uploads a cover
 into the typed `cover` tag and does not insert body Markdown.
 
+### Inline local video
+
+In the same **Write** toolbar, click **Insert video**, select an `.mp4`,
+`.webm`, `.m4v`, `.mov`, or `.ogv` file, and the Composer inserts a link such
+as the following at the cursor:
+
+```markdown
+[Night train](/media/2026/08/550e8400-e29b-41d4-a716-446655440000.mp4)
+```
+
+The Markdown renderer recognizes those local video extensions and turns the
+link into a same-origin native player with seek support. Prefer MP4 encoded as
+H.264 video with AAC audio for the broadest browser compatibility. The current
+upload limit is 512 MiB and there is no automatic transcoding yet.
+
+### Media Library
+
+The Workspace header opens **Media library** for editors and administrators.
+It searches the MySQL media-object index by original filename, object key, or
+MIME type; filters Images, Videos, Audio, and other Files; previews browser
+playable media; and copies either the same-origin `/media/...` link or ready-to-
+paste Markdown. It never shows a MinIO endpoint or credentials.
+
+Media deletion is intentionally not exposed yet: an object can be referenced
+by multiple Markdown documents, and deleting it without reference tracking
+would create broken articles. A future cleanup feature should first report all
+references and only offer deletion for confirmed unreferenced objects.
+
 Changing a Draft or Archived item to Published refreshes `published_at` so archive ordering reflects the actual publication event. Unpublish moves an item to Draft without deleting it. Archive keeps the record and media references. Delete is permanent and requires confirmation.
 
 ## Content lifecycle

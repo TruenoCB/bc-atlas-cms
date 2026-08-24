@@ -8,7 +8,7 @@ A self-hosted personal publishing foundation for essays, thoughts, media, hierar
 - Interactive pixel world map with restrained pointer parallax and local pixel lift.
 - Source-matched quiet homepage with an Asia-Pacific field-note map and a discreet full-world expansion control.
 - Footprint markers derived from article tag data and linked back to their article reader.
-- Searchable Essays, Thoughts, Gallery, Field Notes, Knowledge, and owner Workspace modules.
+- Searchable Essays, Thoughts, Gallery, Field Notes, Knowledge, and owner Workspace modules, including a media library for copying reusable same-origin Markdown links.
 - Multiple knowledge bases with collapsible parent/child page trees, per-page tables of contents, Markdown, GFM, LaTeX, images, native video, and sandboxed interactive HTML.
 - Unified publishing flow for essays, thoughts, galleries, video, and footprints with Markdown, GFM, LaTeX preview, visibility, typed coordinates, and S3 media upload.
 - Persistent registration, password hashing, private sessions, `member`/`editor`/`admin` roles, and server-enforced article visibility.
@@ -104,7 +104,7 @@ The same tag-property system can later support typed tags such as `book`, `proje
 | `GET/PUT/DELETE` | `/api/contents/{slug}` | Read, edit, or delete one content entry |
 | `GET/POST` | `/api/contents/{slug}/comments` | Read or publish article comments |
 | `GET` | `/api/schema/tags/footprint` | Footprint tag property schema |
-| `POST` | `/api/media` | Stream images, video, audio, documents, and other files to S3/MinIO (512 MiB request limit) |
+| `GET/POST` | `/api/media` | Editor/Admin media library listing and uploads to S3/MinIO (512 MiB request limit) |
 | `GET/HEAD` | `/media/{object-key}` | Same-origin media delivery with cache and HTTP Range support for video seeking |
 | `GET/POST` | `/api/knowledge-bases` | List or create knowledge bases |
 | `GET/POST` | `/api/knowledge-bases/{base}/pages` | List or publish hierarchical knowledge pages |

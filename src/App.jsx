@@ -16,6 +16,7 @@ import { publicModules } from "./modules/registry.js";
 const PublishFootprintDialog = lazy(() => import("./components/PublishFootprintDialog.jsx").then((module) => ({ default: module.PublishFootprintDialog })));
 const ArticleReader = lazy(() => import("./components/ArticleReader.jsx").then((module) => ({ default: module.ArticleReader })));
 const KnowledgeHub = lazy(() => import("./components/KnowledgeHub.jsx").then((module) => ({ default: module.KnowledgeHub })));
+const MediaLibrary = lazy(() => import("./components/MediaLibrary.jsx").then((module) => ({ default: module.MediaLibrary })));
 
 function publicationTimestamp(item) {
   const timestamp = Date.parse(item?.publishedAt ?? item?.updatedAt ?? item?.createdAt ?? "");
@@ -325,6 +326,8 @@ export function App() {
         </section>
       </main> : view === "Knowledge" ? (
         <Suspense fallback={<div className="module-loading">Loading knowledge…</div>}><KnowledgeHub key={view} user={user} onRequireAuth={requireAuth} /></Suspense>
+      ) : view === "Media Library" ? (
+        <Suspense fallback={<div className="module-loading">Loading media library…</div>}><MediaLibrary key={view} onBack={() => setView("Workspace")} /></Suspense>
       ) : (
         <ContentHub
           key={view}
@@ -336,6 +339,7 @@ export function App() {
           onDuplicate={(article) => openPublisher("duplicate", article)}
           onStatusChange={changeContentStatus}
           onDelete={removeContent}
+          onOpenMediaLibrary={() => setView("Media Library")}
           canManage={(article) => user?.role === "admin" || article.authorId === user?.id}
           canPublish={canPublish}
         />

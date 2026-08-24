@@ -86,11 +86,18 @@ type Comment struct {
 type MediaObject struct {
 	ID           string    `json:"id"`
 	ObjectKey    string    `json:"objectKey"`
+	URL          string    `json:"url"`
 	BucketName   string    `json:"bucketName"`
 	OriginalName string    `json:"originalName"`
 	ContentType  string    `json:"contentType"`
 	SizeBytes    int64     `json:"sizeBytes"`
 	CreatedAt    time.Time `json:"createdAt"`
+}
+
+type MediaFilter struct {
+	Query string
+	Kind  string
+	Limit int
 }
 
 type PropertyDefinition struct {
