@@ -21,7 +21,7 @@ The production image contains the compiled React assets and the Go binary. The b
 | --- | --- | --- | --- | --- |
 | Content | `ContentHub`, `ArticleReader`, publisher | `/api/contents`, `/rss.xml` | `domain/content.go` | `contents`, `tags`, `content_tags`, tag property tables |
 | Footprints | `PixelWorldMap` | `/api/footprints` | typed `footprint` tag | same content tables |
-| Knowledge | `KnowledgeHub` | `/api/knowledge-bases/**` | `domain/knowledge.go` | `knowledge_bases`, `knowledge_pages` |
+| Knowledge | `KnowledgeHub` | `/api/knowledge-bases/**` | `domain/knowledge.go` | `contents` + `knowledge_base_details` + `knowledge_structure` |
 | Membership | `AuthDialog` | `/api/auth/**` | `domain/membership.go` | `users`, `sessions` |
 | Comments | `ArticleReader` | `/api/contents/{slug}/comments` | content repository | `comments` (nullable user for named guests) |
 | Media | publisher/editor upload controls | `/api/media` | `media.Store` | `media_objects` plus S3 objects |

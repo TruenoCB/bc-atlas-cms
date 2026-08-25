@@ -70,6 +70,9 @@ func migrate(ctx context.Context, repository *store.MySQLRepository, objectStore
 	}
 	migratedContents := 0
 	for _, content := range contents {
+		if content.Type == "knowledge_base" || content.Type == "knowledge_page" {
+			continue
+		}
 		if content.BodyObjectKey != "" {
 			continue
 		}
@@ -141,19 +144,6 @@ func verify(ctx context.Context, repository *store.MySQLRepository, objectStore 
 		}
 		if _, err := loadAndVerifyBody(ctx, objectStore, content.BodyObjectKey, "", content.BodyHash, content.BodySize); err != nil {
 			return fmt.Errorf("verify content %s: %w", content.Slug, err)
-		}
-		checked++
-	}
-	pages, err := repository.ListAllKnowledgePages(ctx)
-	if err != nil {
-		return err
-	}
-	for _, page := range pages {
-		if page.BodyObjectKey == "" {
-			continue
-		}
-		if _, err := loadAndVerifyBody(ctx, objectStore, page.BodyObjectKey, "", page.BodyHash, page.BodySize); err != nil {
-			return fmt.Errorf("verify knowledge page %s: %w", page.Slug, err)
 		}
 		checked++
 	}

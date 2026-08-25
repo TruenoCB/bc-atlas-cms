@@ -11,15 +11,28 @@ import (
 )
 
 type MemoryRepository struct {
-	mu             sync.RWMutex
-	contents       []domain.Content
-	usersByID      map[string]domain.User
-	userIDByMail   map[string]string
-	sessions       map[string]domain.Session
-	comments       []domain.Comment
-	mediaObjects   []domain.MediaObject
-	knowledgeBases []domain.KnowledgeBase
-	knowledgePages []domain.KnowledgePage
+	mu                   sync.RWMutex
+	contents             []domain.Content
+	usersByID            map[string]domain.User
+	userIDByMail         map[string]string
+	sessions             map[string]domain.Session
+	comments             []domain.Comment
+	mediaObjects         []domain.MediaObject
+	knowledgeBaseDetails map[string]memoryKnowledgeBaseDetail
+	knowledgeStructure   map[string]memoryKnowledgeNode
+}
+
+type memoryKnowledgeBaseDetail struct {
+	RouteSlug string
+	CoverURL  string
+	Position  int
+}
+
+type memoryKnowledgeNode struct {
+	KnowledgeBaseID string
+	ParentID        string
+	RouteSlug       string
+	Position        int
 }
 
 func (repository *MemoryRepository) Health(context.Context) error {
@@ -75,18 +88,25 @@ func NewMemoryRepository() *MemoryRepository {
 		userIDByMail: map[string]string{},
 		sessions:     map[string]domain.Session{},
 		comments:     []domain.Comment{},
-		knowledgeBases: []domain.KnowledgeBase{
-			{ID: "kb-systems", Slug: "systems-field-manual", Title: "Systems Field Manual", Description: "Calm infrastructure, observability, and practical AI engineering.", CoverURL: "", Visibility: "public", Position: 10, CreatedAt: now, UpdatedAt: now},
-			{ID: "kb-practice", Slug: "practice-notes", Title: "Practice Notes", Description: "Training systems, recovery, and deliberate repetition.", Visibility: "public", Position: 20, CreatedAt: now, UpdatedAt: now},
+		knowledgeBaseDetails: map[string]memoryKnowledgeBaseDetail{
+			"kb-systems":  {RouteSlug: "systems-field-manual", Position: 10},
+			"kb-practice": {RouteSlug: "practice-notes", Position: 20},
 		},
-		knowledgePages: []domain.KnowledgePage{
-			{ID: "kp-systems-intro", KnowledgeBaseID: "kb-systems", Slug: "start-here", Title: "Start here", Summary: "How to use this field manual.", BodyMarkdown: "# Systems Field Manual\n\nA connected guide to building software that stays understandable under pressure.\n\n## How this guide is organized\n\nEach entry can have ordered child pages. Images use ordinary Markdown, videos use a linked media file, and small interactive demonstrations live in sandboxed HTML blocks.\n\n## A working principle\n\n$$\\text{operability} = \\frac{\\text{clarity} \\times \\text{recovery}}{\\text{hidden coupling} + 1}$$", Position: 10, Status: "published", Visibility: "public", CreatedAt: now, UpdatedAt: now},
-			{ID: "kp-calm-root", KnowledgeBaseID: "kb-systems", Slug: "calm-systems", Title: "Calm systems", Summary: "A chapter about visible recovery paths.", BodyMarkdown: "# Calm systems\n\nCalmness is an operational property: the next useful action is visible.\n\n## Bound the failure\n\nPrefer small failure domains and explicit recovery paths.\n\n## Make state legible\n\nA dashboard is useful only when its state leads to a decision.", Position: 20, Status: "published", Visibility: "public", CreatedAt: now, UpdatedAt: now},
-			{ID: "kp-observability", KnowledgeBaseID: "kb-systems", ParentID: "kp-calm-root", Slug: "observability", Title: "Observability", Summary: "Signals that support decisions.", BodyMarkdown: "# Observability\n\nCollect signals that answer a question, not signals that merely fill a chart.\n\n## Logs\n\nKeep events structured and attach stable identifiers.\n\n## Metrics\n\nMeasure work, saturation, errors, and latency before decorative totals.", Position: 10, Status: "published", Visibility: "public", CreatedAt: now, UpdatedAt: now},
-			{ID: "kp-rag-root", KnowledgeBaseID: "kb-systems", Slug: "ai-retrieval", Title: "AI retrieval", Summary: "Notes on retrieval systems and evaluation.", BodyMarkdown: "# AI retrieval\n\nRetrieval quality depends on the document model before it depends on the vector store.\n\n## Keep source boundaries\n\nStore document and section identities with every chunk.\n\n## Evaluate the path\n\nMeasure retrieval coverage separately from answer quality.\n\n### Tiny interactive example\n\nThe block below runs in an isolated iframe with no access to the CMS session.\n\n```html-sandbox\n<button id=\"toggle\">Show retrieval note</button>\n<p id=\"note\" hidden>Keep the source document and section ID beside every chunk.</p>\n<script>\ndocument.querySelector('#toggle').onclick = () => { document.querySelector('#note').hidden = false; };\n</script>\n```", Position: 30, Status: "published", Visibility: "public", CreatedAt: now, UpdatedAt: now},
-			{ID: "kp-practice-intro", KnowledgeBaseID: "kb-practice", Slug: "training-system", Title: "Training system", Summary: "A compact system for consistent practice.", BodyMarkdown: "# Training system\n\nSkill grows through repeatable sessions, honest feedback, and enough recovery to return.\n\n## Session shape\n\nWarm up, isolate one variable, apply it under pressure, and write the observation down.", Position: 10, Status: "published", Visibility: "public", CreatedAt: now, UpdatedAt: now},
+		knowledgeStructure: map[string]memoryKnowledgeNode{
+			"kp-systems-intro":  {KnowledgeBaseID: "kb-systems", RouteSlug: "start-here", Position: 10},
+			"kp-calm-root":      {KnowledgeBaseID: "kb-systems", RouteSlug: "calm-systems", Position: 20},
+			"kp-observability":  {KnowledgeBaseID: "kb-systems", ParentID: "kp-calm-root", RouteSlug: "observability", Position: 10},
+			"kp-rag-root":       {KnowledgeBaseID: "kb-systems", RouteSlug: "ai-retrieval", Position: 30},
+			"kp-practice-intro": {KnowledgeBaseID: "kb-practice", RouteSlug: "training-system", Position: 10},
 		},
 		contents: []domain.Content{
+			{ID: "kb-systems", Type: "knowledge_base", Slug: "knowledge-base--kb-systems", Title: "Systems Field Manual", Summary: "Calm infrastructure, observability, and practical AI engineering.", Status: "published", Visibility: "public", PublishedAt: now, CreatedAt: now, UpdatedAt: now},
+			{ID: "kb-practice", Type: "knowledge_base", Slug: "knowledge-base--kb-practice", Title: "Practice Notes", Summary: "Training systems, recovery, and deliberate repetition.", Status: "published", Visibility: "public", PublishedAt: now, CreatedAt: now, UpdatedAt: now},
+			{ID: "kp-systems-intro", Type: "knowledge_page", Slug: "knowledge-page--kp-systems-intro", Title: "Start here", Summary: "How to use this field manual.", BodyMarkdown: "# Systems Field Manual\n\nA connected guide to building software that stays understandable under pressure.\n\n## How this guide is organized\n\nEach entry can have ordered child pages. Images use ordinary Markdown, videos use a linked media file, and small interactive demonstrations live in sandboxed HTML blocks.", Status: "published", Visibility: "public", PublishedAt: now, CreatedAt: now, UpdatedAt: now},
+			{ID: "kp-calm-root", Type: "knowledge_page", Slug: "knowledge-page--kp-calm-root", Title: "Calm systems", Summary: "A chapter about visible recovery paths.", BodyMarkdown: "# Calm systems\n\nCalmness is an operational property: the next useful action is visible.\n\n## Bound the failure\n\nPrefer small failure domains and explicit recovery paths.", Status: "published", Visibility: "public", PublishedAt: now, CreatedAt: now, UpdatedAt: now},
+			{ID: "kp-observability", Type: "knowledge_page", Slug: "knowledge-page--kp-observability", Title: "Observability", Summary: "Signals that support decisions.", BodyMarkdown: "# Observability\n\nCollect signals that answer a question, not signals that merely fill a chart.\n\n## Metrics\n\nMeasure work, saturation, errors, and latency before decorative totals.", Status: "published", Visibility: "public", PublishedAt: now, CreatedAt: now, UpdatedAt: now},
+			{ID: "kp-rag-root", Type: "knowledge_page", Slug: "knowledge-page--kp-rag-root", Title: "AI retrieval", Summary: "Notes on retrieval systems and evaluation.", BodyMarkdown: "# AI retrieval\n\nRetrieval quality depends on the document model before it depends on the vector store.\n\n## Keep source boundaries\n\nStore document and section identities with every chunk.", Status: "published", Visibility: "public", PublishedAt: now, CreatedAt: now, UpdatedAt: now},
+			{ID: "kp-practice-intro", Type: "knowledge_page", Slug: "knowledge-page--kp-practice-intro", Title: "Training system", Summary: "A compact system for consistent practice.", BodyMarkdown: "# Training system\n\nSkill grows through repeatable sessions, honest feedback, and enough recovery to return.", Status: "published", Visibility: "public", PublishedAt: now, CreatedAt: now, UpdatedAt: now},
 			{
 				ID: "essay-calm-systems", Type: "article", Slug: "building-calm-systems",
 				Title: "Building calm systems in a noisy world", Summary: "Notes on software, infrastructure, and deliberate practice.",
@@ -181,7 +201,7 @@ func (repository *MemoryRepository) ListContents(_ context.Context, filter domai
 				continue
 			}
 		}
-		items = append(items, content)
+		items = append(items, repository.decorateKnowledgeContentLocked(content))
 	}
 	SortContentsByPublished(items)
 	return items, nil
@@ -267,10 +287,37 @@ func (repository *MemoryRepository) FindBySlug(_ context.Context, slug string) (
 	defer repository.mu.RUnlock()
 	for _, content := range repository.contents {
 		if content.Slug == slug {
-			return content, nil
+			return repository.decorateKnowledgeContentLocked(content), nil
 		}
 	}
 	return domain.Content{}, ErrNotFound
+}
+
+func (repository *MemoryRepository) decorateKnowledgeContentLocked(content domain.Content) domain.Content {
+	switch content.Type {
+	case "knowledge_base":
+		if detail, ok := repository.knowledgeBaseDetails[content.ID]; ok {
+			content.KnowledgeBaseSlug = detail.RouteSlug
+			content.CoverURL = detail.CoverURL
+			content.Position = detail.Position
+		}
+	case "knowledge_page":
+		if node, ok := repository.knowledgeStructure[content.ID]; ok {
+			content.KnowledgePageSlug = node.RouteSlug
+			content.ParentID = node.ParentID
+			content.Position = node.Position
+			if detail, exists := repository.knowledgeBaseDetails[node.KnowledgeBaseID]; exists {
+				content.KnowledgeBaseSlug = detail.RouteSlug
+			}
+			for _, base := range repository.contents {
+				if base.ID == node.KnowledgeBaseID {
+					content.KnowledgeBaseTitle = base.Title
+					break
+				}
+			}
+		}
+	}
+	return content
 }
 
 func (repository *MemoryRepository) CreateComment(_ context.Context, contentSlug, userID, authorDisplayName, body string) (domain.Comment, error) {

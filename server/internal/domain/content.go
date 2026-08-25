@@ -6,11 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
 
 type PropertyType string
+
+var contentTypePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
 
 const (
 	PropertyString  PropertyType = "string"
@@ -26,20 +29,26 @@ type Tag struct {
 }
 
 type Content struct {
-	ID           string    `json:"id"`
-	AuthorID     string    `json:"authorId,omitempty"`
-	Type         string    `json:"type"`
-	Slug         string    `json:"slug"`
-	Title        string    `json:"title"`
-	Summary      string    `json:"summary"`
-	BodyMarkdown string    `json:"bodyMarkdown"`
-	Status       string    `json:"status"`
-	Visibility   string    `json:"visibility"`
-	PublishedAt  time.Time `json:"publishedAt"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
-	Tags         []Tag     `json:"tags"`
-	Locked       bool      `json:"locked,omitempty"`
+	ID                 string    `json:"id"`
+	AuthorID           string    `json:"authorId,omitempty"`
+	Type               string    `json:"type"`
+	Slug               string    `json:"slug"`
+	Title              string    `json:"title"`
+	Summary            string    `json:"summary"`
+	BodyMarkdown       string    `json:"bodyMarkdown"`
+	Status             string    `json:"status"`
+	Visibility         string    `json:"visibility"`
+	PublishedAt        time.Time `json:"publishedAt"`
+	CreatedAt          time.Time `json:"createdAt"`
+	UpdatedAt          time.Time `json:"updatedAt"`
+	Tags               []Tag     `json:"tags"`
+	Locked             bool      `json:"locked,omitempty"`
+	KnowledgeBaseSlug  string    `json:"knowledgeBaseSlug,omitempty"`
+	KnowledgeBaseTitle string    `json:"knowledgeBaseTitle,omitempty"`
+	KnowledgePageSlug  string    `json:"knowledgePageSlug,omitempty"`
+	ParentID           string    `json:"parentId,omitempty"`
+	Position           int       `json:"position,omitempty"`
+	CoverURL           string    `json:"coverUrl,omitempty"`
 	// Body storage metadata is intentionally hidden from the public API response.
 	BodyObjectKey string `json:"-"`
 	BodyRevision  int    `json:"-"`
@@ -143,10 +152,8 @@ func (input *ContentInput) Validate() error {
 	if input.Type == "" {
 		input.Type = "article"
 	}
-	switch input.Type {
-	case "article", "thought", "gallery", "video", "page":
-	default:
-		return errors.New("type must be article, thought, gallery, video, or page")
+	if len(input.Type) > 64 || !contentTypePattern.MatchString(input.Type) {
+		return errors.New("type must be a lowercase identifier using letters, numbers, underscores, or hyphens")
 	}
 	if input.Status == "" {
 		input.Status = "published"

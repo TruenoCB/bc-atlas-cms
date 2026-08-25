@@ -72,13 +72,25 @@ export function App() {
     }))));
   };
 
+  const refreshContentCollections = async (account = user) => {
+    const publisher = ["editor", "admin"].includes(account?.role);
+    const [mappedItems, allItems] = await Promise.all([listFootprints(), listContents(publisher ? { status: "all" } : {})]);
+    setFootprints(mappedItems);
+    setContents(allItems);
+  };
+
+  // The knowledge reader keeps its own tree state for fast navigation, while
+  // the owner workspace consumes the unified /contents feed. Refresh both
+  // projections after any knowledge mutation so a create, edit, or delete is
+  // visible immediately in either surface.
+  const refreshWorkspaceData = async (account = user) => {
+    await Promise.all([refreshContentCollections(account), refreshKnowledgeWorkspace()]);
+  };
+
   useEffect(() => {
     getSession().catch(() => null).then(async (account) => {
       setUser(account);
-      const publisher = ["editor", "admin"].includes(account?.role);
-      const [mappedItems, allItems] = await Promise.all([listFootprints(), listContents(publisher ? { status: "all" } : {}), refreshKnowledgeWorkspace()]);
-      setFootprints(mappedItems);
-      setContents(allItems);
+      await refreshWorkspaceData(account);
     }).catch((error) => setNotice(error instanceof Error ? error.message : "Content could not be loaded."));
   }, []);
 
@@ -160,10 +172,7 @@ export function App() {
 
   const authenticated = async (authenticatedUser) => {
     setUser(authenticatedUser);
-    const publisher = ["editor", "admin"].includes(authenticatedUser?.role);
-    const [refreshedFootprints, refreshedContents] = await Promise.all([listFootprints(), listContents(publisher ? { status: "all" } : {}), refreshKnowledgeWorkspace()]);
-    setFootprints(refreshedFootprints);
-    setContents(refreshedContents);
+    await refreshWorkspaceData(authenticatedUser);
     if (pendingArticleSlug) {
       try {
         setReaderArticle(await getContent(pendingArticleSlug));
@@ -180,9 +189,7 @@ export function App() {
     setUser(null);
     setView("Home");
     setReaderArticle(null);
-    const [refreshedFootprints, refreshedContents] = await Promise.all([listFootprints(), listContents(), refreshKnowledgeWorkspace()]);
-    setFootprints(refreshedFootprints);
-    setContents(refreshedContents);
+    await refreshWorkspaceData(null);
     setNotice("Signed out");
   };
 
@@ -279,7 +286,7 @@ export function App() {
         status,
         visibility: current.visibility,
       });
-      await refreshKnowledgeWorkspace();
+      await refreshWorkspaceData();
       setNotice(status === "published" ? "Knowledge document published" : status === "archived" ? "Knowledge document archived" : "Knowledge document moved to drafts");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Knowledge document status could not be changed.");
@@ -292,7 +299,7 @@ export function App() {
     try {
       if (entry.workspaceKind === "knowledge-base") await deleteKnowledgeBase(entry.knowledgeBaseSlug);
       else await deleteKnowledgePage(entry.knowledgeBaseSlug, entry.slug);
-      await refreshKnowledgeWorkspace();
+      await refreshWorkspaceData();
       setNotice(entry.workspaceKind === "knowledge-base" ? "Knowledge base deleted" : "Knowledge document deleted");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Knowledge content could not be deleted.");
@@ -396,7 +403,7 @@ export function App() {
           />
         </section>
       </main> : view === "Knowledge" ? (
-        <Suspense fallback={<div className="module-loading">Loading knowledge…</div>}><KnowledgeHub key={`knowledge-${knowledgeTarget.baseSlug}-${knowledgeTarget.pageSlug}-${knowledgeTarget.startEditing ? "edit" : "read"}`} user={user} onRequireAuth={requireAuth} initialBaseSlug={knowledgeTarget.baseSlug} initialPageSlug={knowledgeTarget.pageSlug} startEditing={knowledgeTarget.startEditing} onWorkspaceChange={refreshKnowledgeWorkspace} /></Suspense>
+        <Suspense fallback={<div className="module-loading">Loading knowledge…</div>}><KnowledgeHub key={`knowledge-${knowledgeTarget.baseSlug}-${knowledgeTarget.pageSlug}-${knowledgeTarget.startEditing ? "edit" : "read"}`} user={user} onRequireAuth={requireAuth} initialBaseSlug={knowledgeTarget.baseSlug} initialPageSlug={knowledgeTarget.pageSlug} startEditing={knowledgeTarget.startEditing} onWorkspaceChange={() => refreshWorkspaceData()} /></Suspense>
       ) : view === "Media Library" ? (
         <Suspense fallback={<div className="module-loading">Loading media library…</div>}><MediaLibrary key={view} onBack={() => setView("Workspace")} /></Suspense>
       ) : (

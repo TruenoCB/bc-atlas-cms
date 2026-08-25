@@ -91,7 +91,17 @@ export function ContentHub({ section, contents, knowledgeBases = [], knowledgePa
   const archive = useMemo(() => archiveByDate(items), [items]);
 
   if (section === "Workspace") {
-    const knowledgeEntries = [
+    const unifiedKnowledgeEntries = contents.filter((item) => item.type === "knowledge_base" || item.type === "knowledge_page").map((item) => ({
+      ...item,
+      workspaceKind: item.type === "knowledge_base" ? "knowledge-base" : "knowledge-page",
+      type: item.type.replace("_", " "),
+      slug: item.knowledgePageSlug || item.knowledgeBaseSlug || item.slug,
+      knowledgeBaseSlug: item.knowledgeBaseSlug,
+      knowledgeBaseTitle: item.knowledgeBaseTitle,
+    }));
+    // The standalone demo fallback has its own seed data. A live API returns
+    // unified knowledge content, so it never duplicates these entries.
+    const knowledgeEntries = unifiedKnowledgeEntries.length ? unifiedKnowledgeEntries : [
       ...knowledgeBases.map((base) => ({
         id: `knowledge-base-${base.id}`,
         workspaceKind: "knowledge-base",
@@ -120,7 +130,8 @@ export function ContentHub({ section, contents, knowledgeBases = [], knowledgePa
         knowledgeBaseTitle: page.knowledgeBaseTitle,
       })),
     ];
-    const allWorkspaceEntries = [...contents, ...knowledgeEntries];
+    const ordinaryEntries = contents.filter((item) => item.type !== "knowledge_base" && item.type !== "knowledge_page");
+    const allWorkspaceEntries = [...ordinaryEntries, ...knowledgeEntries];
     const statusCounts = {
       all: allWorkspaceEntries.length,
       draft: allWorkspaceEntries.filter((item) => item.status === "draft").length,

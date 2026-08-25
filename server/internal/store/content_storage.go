@@ -46,22 +46,25 @@ func (repository *MySQLRepository) MigrateKnowledgeObject(ctx context.Context, p
 	if revision < 1 {
 		revision = 1
 	}
-	_, err := repository.db.ExecContext(ctx, `UPDATE knowledge_pages SET body_markdown = '', body_object_key = ?, body_revision = ?, body_hash = ?, body_size = ?, updated_at = ? WHERE id = ?`, objectKey, revision, hash, size, time.Now().UTC(), page.ID)
+	_, err := repository.db.ExecContext(ctx, `UPDATE contents SET body_markdown = '', body_object_key = ?, body_revision = ?, body_hash = ?, body_size = ?, updated_at = ? WHERE id = ? AND content_type = 'knowledge_page'`, objectKey, revision, hash, size, time.Now().UTC(), page.ID)
 	return err
 }
 
 func (repository *MySQLRepository) ListAllKnowledgePages(ctx context.Context) ([]domain.KnowledgePage, error) {
-	bases, err := repository.ListKnowledgeBases(ctx)
+	rows, err := repository.db.QueryContext(ctx, `SELECT `+knowledgePageColumns+`
+      FROM contents c JOIN knowledge_structure s ON s.content_id = c.id
+      WHERE c.content_type = 'knowledge_page' ORDER BY c.id`)
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 	pages := make([]domain.KnowledgePage, 0)
-	for _, base := range bases {
-		items, err := repository.ListKnowledgePages(ctx, base.Slug)
+	for rows.Next() {
+		page, err := scanKnowledgePage(rows)
 		if err != nil {
 			return nil, err
 		}
-		pages = append(pages, items...)
+		pages = append(pages, page)
 	}
-	return pages, nil
+	return pages, rows.Err()
 }
