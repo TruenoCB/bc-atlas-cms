@@ -107,6 +107,7 @@ The same tag-property system can later support typed tags such as `book`, `proje
 | `GET/POST` | `/api/media` | Editor/Admin media library listing and uploads to S3/MinIO (512 MiB request limit) |
 | `GET/HEAD` | `/media/{object-key}` | Same-origin media delivery with cache and HTTP Range support for video seeking |
 | `GET/POST` | `/api/knowledge-bases` | List or create knowledge bases |
+| `GET/PUT/DELETE` | `/api/knowledge-bases/{base}` | Read, edit, or delete a knowledge-base collection |
 | `GET/POST` | `/api/knowledge-bases/{base}/pages` | List or publish hierarchical knowledge pages |
 | `GET/PUT/DELETE` | `/api/knowledge-bases/{base}/pages/{page}` | Read, edit, or delete a knowledge page |
 | `GET` | `/rss.xml` | RSS 2.0 feed |

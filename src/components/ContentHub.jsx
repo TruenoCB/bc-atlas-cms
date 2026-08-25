@@ -68,7 +68,7 @@ function archiveByDate(items) {
   }));
 }
 
-export function ContentHub({ section, contents, onSelect, onPublish, onEdit, onDuplicate, onStatusChange, onDelete, onOpenMediaLibrary, canManage = () => false, canPublish }) {
+export function ContentHub({ section, contents, knowledgeBases = [], knowledgePages = [], onSelect, onPublish, onEdit, onDuplicate, onStatusChange, onDelete, onOpenKnowledge, onEditKnowledge, onStatusChangeKnowledge, onDeleteKnowledge, onOpenMediaLibrary, canManage = () => false, canPublish }) {
   const [query, setQuery] = useState("");
   const [selectedTag, setSelectedTag] = useState("all");
   const [workspaceStatus, setWorkspaceStatus] = useState("all");
@@ -91,15 +91,46 @@ export function ContentHub({ section, contents, onSelect, onPublish, onEdit, onD
   const archive = useMemo(() => archiveByDate(items), [items]);
 
   if (section === "Workspace") {
+    const knowledgeEntries = [
+      ...knowledgeBases.map((base) => ({
+        id: `knowledge-base-${base.id}`,
+        workspaceKind: "knowledge-base",
+        type: "knowledge base",
+        title: base.title,
+        slug: base.slug,
+        summary: base.description,
+        visibility: base.visibility,
+        status: "collection",
+        authorId: base.authorId,
+        updatedAt: base.updatedAt,
+        knowledgeBaseSlug: base.slug,
+      })),
+      ...knowledgePages.map((page) => ({
+        id: `knowledge-page-${page.id}`,
+        workspaceKind: "knowledge-page",
+        type: "knowledge page",
+        title: page.title,
+        slug: page.slug,
+        summary: page.summary,
+        visibility: page.visibility,
+        status: page.status,
+        authorId: page.authorId,
+        updatedAt: page.updatedAt,
+        knowledgeBaseSlug: page.knowledgeBaseSlug,
+        knowledgeBaseTitle: page.knowledgeBaseTitle,
+      })),
+    ];
+    const allWorkspaceEntries = [...contents, ...knowledgeEntries];
     const statusCounts = {
-      all: contents.length,
-      draft: contents.filter((item) => item.status === "draft").length,
-      published: contents.filter((item) => item.status === "published").length,
-      archived: contents.filter((item) => item.status === "archived").length,
+      all: allWorkspaceEntries.length,
+      draft: allWorkspaceEntries.filter((item) => item.status === "draft").length,
+      published: allWorkspaceEntries.filter((item) => item.status === "published").length,
+      archived: allWorkspaceEntries.filter((item) => item.status === "archived").length,
     };
-    const workspaceItems = sectionItems
+    const workspaceItems = allWorkspaceEntries
       .filter((item) => workspaceStatus === "all" || item.status === workspaceStatus)
-      .filter((item) => `${item.type} ${item.title} ${item.summary} ${item.slug}`.toLowerCase().includes(query.trim().toLowerCase()));
+      .filter((item) => `${item.type} ${item.title} ${item.summary} ${item.slug} ${item.knowledgeBaseTitle ?? ""}`.toLowerCase().includes(query.trim().toLowerCase()))
+      .sort((left, right) => new Date(right.updatedAt || right.publishedAt || 0) - new Date(left.updatedAt || left.publishedAt || 0));
     return (
       <section className="content-hub workspace-hub">
         <div className="hub-heading workspace-heading">
@@ -118,30 +149,40 @@ export function ContentHub({ section, contents, onSelect, onPublish, onEdit, onD
         </div>
         <div className="workspace-toolbar">
           <label className="specular-search"><MagnifyingGlass size={16} /><input aria-label="Search workspace content" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search title, slug, summary, or type" /></label>
-          <span>{workspaceItems.length} / {contents.length} entries</span>
+          <span>{workspaceItems.length} / {allWorkspaceEntries.length} entries</span>
         </div>
         <div className="workspace-list">
           <div className="workspace-row workspace-labels"><span>TYPE / TITLE</span><span>VISIBILITY</span><span>STATUS</span><span>UPDATED</span><span>ACTIONS</span></div>
-          {workspaceItems.map((item) => (
+          {workspaceItems.map((item) => {
+            const isKnowledge = Boolean(item.workspaceKind);
+            const manageable = isKnowledge ? canManage(item) : canManage(item);
+            const preview = () => isKnowledge ? onOpenKnowledge?.(item, false) : onSelect(item);
+            const edit = () => isKnowledge ? onEditKnowledge?.(item) : onEdit(item);
+            const remove = () => isKnowledge ? onDeleteKnowledge?.(item) : onDelete(item);
+            return (
             <article key={item.id} className="workspace-row workspace-content-row">
-              <button className="workspace-title-action" type="button" onClick={() => onSelect(item)} title="Preview content">
-                <em>{item.type}</em><span>{item.title}</span><small>/{item.slug}</small>
+              <button className="workspace-title-action" type="button" onClick={preview} title="Preview content">
+                <em>{item.type}</em><span>{item.title}</span><small>{isKnowledge ? `${item.knowledgeBaseTitle ? `${item.knowledgeBaseTitle} / ` : ""}${item.slug}` : `/${item.slug}`}</small>
               </button>
               <span>{item.visibility}</span>
               <span className={`workspace-status status-${item.status}`}>{item.status}</span>
               <span>{dateLabel(item.updatedAt ?? item.publishedAt)}</span>
               <div className="workspace-actions" aria-label={`Actions for ${item.title}`}>
-                <button type="button" onClick={() => onSelect(item)}>Preview</button>
-                <button type="button" onClick={() => onDuplicate(item)}>Duplicate</button>
-                {canManage(item) ? <>
-                  <button type="button" onClick={() => onEdit(item)}>Edit</button>
-                  <button type="button" onClick={() => onStatusChange(item, item.status === "published" ? "draft" : "published")}>{item.status === "published" ? "Unpublish" : "Publish"}</button>
-                  {item.status !== "archived" ? <button type="button" onClick={() => onStatusChange(item, "archived")}>Archive</button> : null}
-                  <button className="danger" type="button" onClick={() => onDelete(item)}>Delete</button>
+                <button type="button" onClick={preview}>Preview</button>
+                {!isKnowledge ? <button type="button" onClick={() => onDuplicate(item)}>Duplicate</button> : null}
+                {manageable ? <>
+                  <button type="button" onClick={edit}>Edit</button>
+                  {item.workspaceKind === "knowledge-page" ? <button type="button" onClick={() => onStatusChangeKnowledge?.(item, item.status === "published" ? "draft" : "published")}>{item.status === "published" ? "Unpublish" : "Publish"}</button> : null}
+                  {item.workspaceKind === "knowledge-page" && item.status !== "archived" ? <button type="button" onClick={() => onStatusChangeKnowledge?.(item, "archived")}>Archive</button> : null}
+                  {!isKnowledge ? <>
+                    <button type="button" onClick={() => onStatusChange(item, item.status === "published" ? "draft" : "published")}>{item.status === "published" ? "Unpublish" : "Publish"}</button>
+                    {item.status !== "archived" ? <button type="button" onClick={() => onStatusChange(item, "archived")}>Archive</button> : null}
+                  </> : null}
+                  <button className="danger" type="button" onClick={remove}>Delete</button>
                 </> : null}
               </div>
             </article>
-          ))}
+          );})}
           {!workspaceItems.length ? <div className="workspace-empty">No content matches this view.</div> : null}
         </div>
       </section>

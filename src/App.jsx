@@ -10,7 +10,22 @@ import { PixelWorldMap } from "./components/PixelWorldMap.jsx";
 import { CardNav } from "./components/CardNav.jsx";
 import { AuthDialog } from "./components/AuthDialog.jsx";
 import { ContentHub } from "./components/ContentHub.jsx";
-import { createContent, deleteContent, getContent, getSession, listContents, listFootprints, logout, updateContent } from "./lib/api.js";
+import {
+  createContent,
+  deleteContent,
+  deleteKnowledgeBase,
+  deleteKnowledgePage,
+  getContent,
+  getKnowledgePage,
+  getSession,
+  listContents,
+  listFootprints,
+  listKnowledgeBases,
+  listKnowledgePages,
+  logout,
+  updateContent,
+  updateKnowledgePage,
+} from "./lib/api.js";
 import { publicModules } from "./modules/registry.js";
 
 const PublishFootprintDialog = lazy(() => import("./components/PublishFootprintDialog.jsx").then((module) => ({ default: module.PublishFootprintDialog })));
@@ -32,6 +47,8 @@ function latestPublished(items, predicate) {
 export function App() {
   const [footprints, setFootprints] = useState([]);
   const [contents, setContents] = useState([]);
+  const [knowledgeBases, setKnowledgeBases] = useState([]);
+  const [knowledgePages, setKnowledgePages] = useState([]);
   const [view, setView] = useState("Home");
   const [publisherOpen, setPublisherOpen] = useState(false);
   const [composerContext, setComposerContext] = useState({ mode: "create", sourceSlug: "", initialValue: null });
@@ -42,12 +59,24 @@ export function App() {
   const [authReason, setAuthReason] = useState("");
   const [pendingArticleSlug, setPendingArticleSlug] = useState("");
   const [editorialCollapsed, setEditorialCollapsed] = useState(false);
+  const [knowledgeTarget, setKnowledgeTarget] = useState({ baseSlug: "", pageSlug: "", startEditing: false });
+
+  const refreshKnowledgeWorkspace = async () => {
+    const bases = await listKnowledgeBases();
+    const pageGroups = await Promise.all(bases.map(async (base) => ({ base, pages: await listKnowledgePages(base.slug) })));
+    setKnowledgeBases(bases);
+    setKnowledgePages(pageGroups.flatMap(({ base, pages }) => pages.map((page) => ({
+      ...page,
+      knowledgeBaseSlug: base.slug,
+      knowledgeBaseTitle: base.title,
+    }))));
+  };
 
   useEffect(() => {
     getSession().catch(() => null).then(async (account) => {
       setUser(account);
       const publisher = ["editor", "admin"].includes(account?.role);
-      const [mappedItems, allItems] = await Promise.all([listFootprints(), listContents(publisher ? { status: "all" } : {})]);
+      const [mappedItems, allItems] = await Promise.all([listFootprints(), listContents(publisher ? { status: "all" } : {}), refreshKnowledgeWorkspace()]);
       setFootprints(mappedItems);
       setContents(allItems);
     }).catch((error) => setNotice(error instanceof Error ? error.message : "Content could not be loaded."));
@@ -132,7 +161,7 @@ export function App() {
   const authenticated = async (authenticatedUser) => {
     setUser(authenticatedUser);
     const publisher = ["editor", "admin"].includes(authenticatedUser?.role);
-    const [refreshedFootprints, refreshedContents] = await Promise.all([listFootprints(), listContents(publisher ? { status: "all" } : {})]);
+    const [refreshedFootprints, refreshedContents] = await Promise.all([listFootprints(), listContents(publisher ? { status: "all" } : {}), refreshKnowledgeWorkspace()]);
     setFootprints(refreshedFootprints);
     setContents(refreshedContents);
     if (pendingArticleSlug) {
@@ -151,7 +180,7 @@ export function App() {
     setUser(null);
     setView("Home");
     setReaderArticle(null);
-    const [refreshedFootprints, refreshedContents] = await Promise.all([listFootprints(), listContents()]);
+    const [refreshedFootprints, refreshedContents] = await Promise.all([listFootprints(), listContents(), refreshKnowledgeWorkspace()]);
     setFootprints(refreshedFootprints);
     setContents(refreshedContents);
     setNotice("Signed out");
@@ -225,6 +254,48 @@ export function App() {
       setNotice("Content deleted");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Content could not be deleted.");
+    }
+  };
+
+  const openKnowledge = (entry, edit = false) => {
+    setKnowledgeTarget({
+      baseSlug: entry.knowledgeBaseSlug,
+      pageSlug: entry.workspaceKind === "knowledge-page" ? entry.slug : "",
+      startEditing: edit && entry.workspaceKind === "knowledge-page",
+    });
+    setView("Knowledge");
+  };
+
+  const changeKnowledgePageStatus = async (page, status) => {
+    try {
+      const current = await getKnowledgePage(page.knowledgeBaseSlug, page.slug);
+      await updateKnowledgePage(page.knowledgeBaseSlug, page.slug, {
+        parentId: current.parentId,
+        title: current.title,
+        slug: current.slug,
+        summary: current.summary,
+        bodyMarkdown: current.bodyMarkdown,
+        position: current.position,
+        status,
+        visibility: current.visibility,
+      });
+      await refreshKnowledgeWorkspace();
+      setNotice(status === "published" ? "Knowledge document published" : status === "archived" ? "Knowledge document archived" : "Knowledge document moved to drafts");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Knowledge document status could not be changed.");
+    }
+  };
+
+  const removeKnowledge = async (entry) => {
+    const target = entry.workspaceKind === "knowledge-base" ? "this knowledge base and every document inside it" : `“${entry.title}”`;
+    if (!window.confirm(`Delete ${target}? This cannot be undone.`)) return;
+    try {
+      if (entry.workspaceKind === "knowledge-base") await deleteKnowledgeBase(entry.knowledgeBaseSlug);
+      else await deleteKnowledgePage(entry.knowledgeBaseSlug, entry.slug);
+      await refreshKnowledgeWorkspace();
+      setNotice(entry.workspaceKind === "knowledge-base" ? "Knowledge base deleted" : "Knowledge document deleted");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Knowledge content could not be deleted.");
     }
   };
 
@@ -325,7 +396,7 @@ export function App() {
           />
         </section>
       </main> : view === "Knowledge" ? (
-        <Suspense fallback={<div className="module-loading">Loading knowledge…</div>}><KnowledgeHub key={view} user={user} onRequireAuth={requireAuth} /></Suspense>
+        <Suspense fallback={<div className="module-loading">Loading knowledge…</div>}><KnowledgeHub key={`knowledge-${knowledgeTarget.baseSlug}-${knowledgeTarget.pageSlug}-${knowledgeTarget.startEditing ? "edit" : "read"}`} user={user} onRequireAuth={requireAuth} initialBaseSlug={knowledgeTarget.baseSlug} initialPageSlug={knowledgeTarget.pageSlug} startEditing={knowledgeTarget.startEditing} onWorkspaceChange={refreshKnowledgeWorkspace} /></Suspense>
       ) : view === "Media Library" ? (
         <Suspense fallback={<div className="module-loading">Loading media library…</div>}><MediaLibrary key={view} onBack={() => setView("Workspace")} /></Suspense>
       ) : (
@@ -333,12 +404,18 @@ export function App() {
           key={view}
           section={view}
           contents={contents}
+          knowledgeBases={knowledgeBases}
+          knowledgePages={knowledgePages}
           onSelect={openArticle}
           onPublish={() => openPublisher("create")}
           onEdit={(article) => openPublisher("edit", article)}
           onDuplicate={(article) => openPublisher("duplicate", article)}
           onStatusChange={changeContentStatus}
           onDelete={removeContent}
+          onOpenKnowledge={openKnowledge}
+          onEditKnowledge={(entry) => openKnowledge(entry, true)}
+          onStatusChangeKnowledge={changeKnowledgePageStatus}
+          onDeleteKnowledge={removeKnowledge}
           onOpenMediaLibrary={() => setView("Media Library")}
           canManage={(article) => user?.role === "admin" || article.authorId === user?.id}
           canPublish={canPublish}
@@ -354,7 +431,7 @@ export function App() {
           onClose={() => setPublisherOpen(false)}
           onSubmit={saveContent}
         />
-        <ArticleReader article={readerArticle} onClose={() => setReaderArticle(null)} user={user} footprints={footprints} />
+        <ArticleReader article={readerArticle} onClose={() => setReaderArticle(null)} user={user} footprints={footprints} canEdit={Boolean(readerArticle && (user?.role === "admin" || readerArticle.authorId === user?.id))} onEdit={(article) => { setReaderArticle(null); openPublisher("edit", article); }} />
       </Suspense>
       <AuthDialog open={signInOpen} reason={authReason} onClose={() => setSignInOpen(false)} onAuthenticated={authenticated} />
     </div>

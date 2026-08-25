@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Clock, Hash, X } from "@phosphor-icons/react";
+import { ArrowLeft, Clock, Hash, PencilSimple, X } from "@phosphor-icons/react";
 import { createComment, listComments } from "../lib/api.js";
 import { meaningfulContentTags, resolveContentCover } from "../lib/contentMedia.js";
 import { ParticleText } from "./ParticleText.jsx";
@@ -30,7 +30,7 @@ function readTime(markdown = "") {
   return Math.max(1, Math.ceil(words / 220));
 }
 
-export function ArticleReader({ article, onClose, user, footprints = [] }) {
+export function ArticleReader({ article, onClose, user, footprints = [], canEdit = false, onEdit }) {
   const [comments, setComments] = useState([]);
   const [commentBody, setCommentBody] = useState("");
   const [guestName, setGuestName] = useState("");
@@ -147,6 +147,7 @@ export function ArticleReader({ article, onClose, user, footprints = [] }) {
       <div className={`dialog-backdrop reader-backdrop compact-reader-backdrop${closing ? " closing" : ""}`} role="presentation" onMouseDown={requestClose}>
         <article ref={readerRef} className={`reader-panel compact-reader-panel${closing ? " closing" : ""}`} role="dialog" aria-modal="true" aria-labelledby="reader-title" onMouseDown={(event) => event.stopPropagation()}>
           <button className="icon-button reader-close" type="button" aria-label="Close article" onClick={requestClose}><X size={18} /></button>
+          {canEdit ? <button className="compact-reader-edit" type="button" onClick={() => onEdit?.(article)}><PencilSimple size={14} />Edit</button> : null}
           {cover ? <figure className="compact-reader-cover"><img src={cover.url} alt={cover.alt} /></figure> : null}
           <div className="reader-kicker">{location ? `FIELD NOTE / ${location.toUpperCase()}` : article.type?.toUpperCase()}</div>
           <h1 id="reader-title">{article.title}</h1>
@@ -167,6 +168,7 @@ export function ArticleReader({ article, onClose, user, footprints = [] }) {
         </div>
         <div className="essay-progress" aria-hidden="true"><span style={{ transform: `scaleX(${scrollProgress})` }} /></div>
         <button className="essay-reader-close" type="button" onClick={onClose}><ArrowLeft size={16} />Back to essays</button>
+        {canEdit ? <button className="essay-reader-edit" type="button" onClick={() => onEdit?.(article)}><PencilSimple size={14} />Edit</button> : null}
 
         <div className="essay-foreground">
         <header className="essay-hero" data-reveal>

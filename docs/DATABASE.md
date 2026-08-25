@@ -6,6 +6,7 @@
 erDiagram
   USERS ||--o{ SESSIONS : owns
   USERS ||--o{ CONTENTS : authors
+  USERS ||--o{ KNOWLEDGE_BASES : owns
   USERS ||--o{ KNOWLEDGE_PAGES : authors
   USERS ||--o{ COMMENTS : writes
   CONTENTS ||--o{ COMMENTS : receives
@@ -37,7 +38,7 @@ The footprint feature uses the publishing tables. `latitude`, `longitude`, and `
 
 | Table | Purpose | Important keys |
 | --- | --- | --- |
-| `knowledge_bases` | One tutorial/manual/document collection; optional S3 `cover_url` | unique `slug`; ordered by `position` |
+| `knowledge_bases` | One tutorial/manual/document collection; optional S3 `cover_url`; collection author | unique `slug`; `author_id` index; ordered by `position` |
 | `knowledge_pages` | An ordered page within one knowledge base | unique `(knowledge_base_id, slug)`; tree index `(knowledge_base_id, parent_id, position)` |
 
 `knowledge_pages.parent_id` is an adjacency-list relationship. A null parent is a top-level chapter. `ON DELETE RESTRICT` prevents deleting a parent before its child pages are moved or removed. This keeps the document tree valid without encoding paths into slugs.
@@ -67,7 +68,7 @@ The current files are:
 - `004_knowledge.sql`: knowledge bases and hierarchical pages
 - `005_content_storage.sql`: article search projection; document object metadata is added idempotently by the startup schema guard for compatibility with already-created installations
 
-`cover_url` is an additive compatibility column installed by the idempotent `ensureKnowledgeBaseCoverColumn` startup guard. The guard checks `information_schema` before altering an existing `knowledge_bases` table, which protects installations that already ran `004_knowledge.sql` without rewriting that deployed migration.
+`cover_url` and `author_id` are additive compatibility columns installed by idempotent startup guards (`ensureKnowledgeBaseCoverColumn` and `ensureKnowledgeBaseAuthorColumn`). The guards check `information_schema` before altering an existing `knowledge_bases` table, which protects installations that already ran `004_knowledge.sql` without rewriting that deployed migration. `author_id` references `users(id)` with `ON DELETE SET NULL`; an old collection with no author can still be managed by an administrator.
 
 An installation created by an older build may still contain the unused `chat_messages` table. The application no longer reads or writes it. Remove that legacy table manually only after a backup if reclaiming it matters.
 

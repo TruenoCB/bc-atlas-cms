@@ -8,6 +8,7 @@ import (
 
 type KnowledgeBase struct {
 	ID          string    `json:"id"`
+	AuthorID    string    `json:"authorId,omitempty"`
 	Slug        string    `json:"slug"`
 	Title       string    `json:"title"`
 	Description string    `json:"description"`
@@ -19,6 +20,7 @@ type KnowledgeBase struct {
 }
 
 type KnowledgeBaseInput struct {
+	AuthorID    string `json:"-"`
 	Slug        string `json:"slug"`
 	Title       string `json:"title"`
 	Description string `json:"description"`

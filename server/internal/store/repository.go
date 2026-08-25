@@ -26,7 +26,10 @@ type Repository interface {
 	CreateMediaObject(context.Context, domain.MediaObject) error
 	ListMediaObjects(context.Context, domain.MediaFilter) ([]domain.MediaObject, error)
 	ListKnowledgeBases(context.Context) ([]domain.KnowledgeBase, error)
+	FindKnowledgeBase(context.Context, string) (domain.KnowledgeBase, error)
 	CreateKnowledgeBase(context.Context, domain.KnowledgeBaseInput) (domain.KnowledgeBase, error)
+	UpdateKnowledgeBase(context.Context, string, domain.KnowledgeBaseInput) (domain.KnowledgeBase, error)
+	DeleteKnowledgeBase(context.Context, string) error
 	ListKnowledgePages(context.Context, string) ([]domain.KnowledgePage, error)
 	FindKnowledgePage(context.Context, string, string) (domain.KnowledgePage, error)
 	CreateKnowledgePage(context.Context, string, domain.KnowledgePageInput) (domain.KnowledgePage, error)

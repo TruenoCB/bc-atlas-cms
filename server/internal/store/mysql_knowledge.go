@@ -13,8 +13,10 @@ const knowledgePageColumns = `p.id, p.knowledge_base_id, p.parent_id, p.author_i
   p.summary, p.body_markdown, p.body_object_key, p.body_revision, p.body_hash, p.body_size,
   p.position, p.status, p.visibility, p.created_at, p.updated_at`
 
+const knowledgeBaseColumns = `id, author_id, slug, title, description, cover_url, visibility, position, created_at, updated_at`
+
 func (repository *MySQLRepository) ListKnowledgeBases(ctx context.Context) ([]domain.KnowledgeBase, error) {
-	rows, err := repository.db.QueryContext(ctx, `SELECT id, slug, title, description, cover_url, visibility, position, created_at, updated_at
+	rows, err := repository.db.QueryContext(ctx, `SELECT `+knowledgeBaseColumns+`
       FROM knowledge_bases ORDER BY position, title`)
 	if err != nil {
 		return nil, err
@@ -22,13 +24,22 @@ func (repository *MySQLRepository) ListKnowledgeBases(ctx context.Context) ([]do
 	defer rows.Close()
 	items := make([]domain.KnowledgeBase, 0)
 	for rows.Next() {
-		var item domain.KnowledgeBase
-		if err := rows.Scan(&item.ID, &item.Slug, &item.Title, &item.Description, &item.CoverURL, &item.Visibility, &item.Position, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		item, err := scanKnowledgeBase(rows)
+		if err != nil {
 			return nil, err
 		}
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (repository *MySQLRepository) FindKnowledgeBase(ctx context.Context, slug string) (domain.KnowledgeBase, error) {
+	row := repository.db.QueryRowContext(ctx, `SELECT `+knowledgeBaseColumns+` FROM knowledge_bases WHERE slug = ? LIMIT 1`, slug)
+	item, err := scanKnowledgeBase(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.KnowledgeBase{}, ErrNotFound
+	}
+	return item, err
 }
 
 func (repository *MySQLRepository) CreateKnowledgeBase(ctx context.Context, input domain.KnowledgeBaseInput) (domain.KnowledgeBase, error) {
@@ -41,12 +52,52 @@ func (repository *MySQLRepository) CreateKnowledgeBase(ctx context.Context, inpu
 	}
 	now := time.Now().UTC()
 	_, err = repository.db.ExecContext(ctx, `INSERT INTO knowledge_bases
-		(id, slug, title, description, cover_url, visibility, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, input.Slug, input.Title, input.Description, input.CoverURL, input.Visibility, input.Position, now, now)
+		(id, author_id, slug, title, description, cover_url, visibility, position, created_at, updated_at) VALUES (?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, input.AuthorID, input.Slug, input.Title, input.Description, input.CoverURL, input.Visibility, input.Position, now, now)
 	if err != nil {
 		return domain.KnowledgeBase{}, err
 	}
-	return domain.KnowledgeBase{ID: id, Slug: input.Slug, Title: input.Title, Description: input.Description, CoverURL: input.CoverURL, Visibility: input.Visibility, Position: input.Position, CreatedAt: now, UpdatedAt: now}, nil
+	return domain.KnowledgeBase{ID: id, AuthorID: input.AuthorID, Slug: input.Slug, Title: input.Title, Description: input.Description, CoverURL: input.CoverURL, Visibility: input.Visibility, Position: input.Position, CreatedAt: now, UpdatedAt: now}, nil
+}
+
+func (repository *MySQLRepository) UpdateKnowledgeBase(ctx context.Context, slug string, input domain.KnowledgeBaseInput) (domain.KnowledgeBase, error) {
+	if err := input.Validate(); err != nil {
+		return domain.KnowledgeBase{}, err
+	}
+	current, err := repository.FindKnowledgeBase(ctx, slug)
+	if err != nil {
+		return domain.KnowledgeBase{}, err
+	}
+	now := time.Now().UTC()
+	_, err = repository.db.ExecContext(ctx, `UPDATE knowledge_bases
+      SET slug = ?, title = ?, description = ?, cover_url = ?, visibility = ?, position = ?, updated_at = ? WHERE id = ?`,
+		input.Slug, input.Title, input.Description, input.CoverURL, input.Visibility, input.Position, now, current.ID)
+	if err != nil {
+		return domain.KnowledgeBase{}, err
+	}
+	current.Slug = input.Slug
+	current.Title = input.Title
+	current.Description = input.Description
+	current.CoverURL = input.CoverURL
+	current.Visibility = input.Visibility
+	current.Position = input.Position
+	current.UpdatedAt = now
+	return current, nil
+}
+
+func (repository *MySQLRepository) DeleteKnowledgeBase(ctx context.Context, slug string) error {
+	result, err := repository.db.ExecContext(ctx, `DELETE FROM knowledge_bases WHERE slug = ?`, slug)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (repository *MySQLRepository) ListKnowledgePages(ctx context.Context, baseSlug string) ([]domain.KnowledgePage, error) {
@@ -186,6 +237,14 @@ func (repository *MySQLRepository) DeleteKnowledgePage(ctx context.Context, base
 
 type knowledgeScanner interface {
 	Scan(...any) error
+}
+
+func scanKnowledgeBase(scanner knowledgeScanner) (domain.KnowledgeBase, error) {
+	var item domain.KnowledgeBase
+	var authorID sql.NullString
+	err := scanner.Scan(&item.ID, &authorID, &item.Slug, &item.Title, &item.Description, &item.CoverURL, &item.Visibility, &item.Position, &item.CreatedAt, &item.UpdatedAt)
+	item.AuthorID = authorID.String
+	return item, err
 }
 
 func scanKnowledgePage(scanner knowledgeScanner) (domain.KnowledgePage, error) {

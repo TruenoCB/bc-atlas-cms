@@ -134,6 +134,9 @@ func (repository *MySQLRepository) Migrate(ctx context.Context) error {
 	if err := repository.ensureKnowledgeBaseCoverColumn(ctx); err != nil {
 		return err
 	}
+	if err := repository.ensureKnowledgeBaseAuthorColumn(ctx); err != nil {
+		return err
+	}
 	if err := repository.ensureContentStorageSchema(ctx); err != nil {
 		return err
 	}
@@ -203,6 +206,22 @@ func (repository *MySQLRepository) ensureKnowledgeBaseCoverColumn(ctx context.Co
 		return nil
 	}
 	_, err := repository.db.ExecContext(ctx, `ALTER TABLE knowledge_bases ADD COLUMN cover_url VARCHAR(2048) NOT NULL DEFAULT '' AFTER description`)
+	return err
+}
+
+func (repository *MySQLRepository) ensureKnowledgeBaseAuthorColumn(ctx context.Context) error {
+	var count int
+	if err := repository.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'knowledge_bases' AND COLUMN_NAME = 'author_id'`).Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	_, err := repository.db.ExecContext(ctx, `ALTER TABLE knowledge_bases
+      ADD COLUMN author_id CHAR(36) NULL AFTER id,
+      ADD INDEX idx_knowledge_bases_author (author_id),
+      ADD CONSTRAINT fk_knowledge_base_author FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE SET NULL`)
 	return err
 }
 
