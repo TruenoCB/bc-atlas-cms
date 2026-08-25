@@ -237,6 +237,65 @@ func TestMembershipVisibilityPublishingAndKnowledge(t *testing.T) {
 	}
 }
 
+func TestKnowledgeBaseOwnershipAndCRUD(t *testing.T) {
+	repository := store.NewMemoryRepository()
+	adminHash, err := bcAuth.HashPassword("admin-password-for-tests")
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err := repository.EnsureAdmin(context.Background(), domain.UserInput{
+		Email: "owner@bc.test", DisplayName: "B.C", Role: domain.RoleAdmin, PasswordHash: adminHash,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := New(repository, nil, "", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	login := performJSON(t, handler, http.MethodPost, "/api/auth/login", map[string]any{
+		"email": "owner@bc.test", "password": "admin-password-for-tests",
+	}, nil)
+	adminCookie := sessionCookie(t, login)
+
+	create := performJSON(t, handler, http.MethodPost, "/api/knowledge-bases", map[string]any{
+		"slug": "operations-handbook", "title": "Operations Handbook", "description": "Practical operating notes.", "visibility": "private", "position": 40,
+	}, adminCookie)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create knowledge base status = %d, body = %s", create.Code, create.Body.String())
+	}
+	var base domain.KnowledgeBase
+	decodeResponse(t, create, &base)
+	if base.AuthorID != admin.ID {
+		t.Fatalf("knowledge base owner = %q, want %q", base.AuthorID, admin.ID)
+	}
+
+	page := performJSON(t, handler, http.MethodPost, "/api/knowledge-bases/operations-handbook/pages", map[string]any{
+		"slug": "first-run", "title": "First run", "summary": "Begin here.", "bodyMarkdown": "# First run", "visibility": "private", "status": "draft", "position": 10,
+	}, adminCookie)
+	if page.Code != http.StatusCreated {
+		t.Fatalf("create knowledge page status = %d, body = %s", page.Code, page.Body.String())
+	}
+
+	update := performJSON(t, handler, http.MethodPut, "/api/knowledge-bases/operations-handbook", map[string]any{
+		"slug": "operations-handbook", "title": "Operations Field Manual", "description": "Updated operating notes.", "visibility": "members", "position": 30,
+	}, adminCookie)
+	if update.Code != http.StatusOK {
+		t.Fatalf("update knowledge base status = %d, body = %s", update.Code, update.Body.String())
+	}
+	var updated domain.KnowledgeBase
+	decodeResponse(t, update, &updated)
+	if updated.Title != "Operations Field Manual" || updated.Visibility != "members" || updated.AuthorID != admin.ID {
+		t.Fatalf("unexpected updated knowledge base: %#v", updated)
+	}
+
+	remove := performJSON(t, handler, http.MethodDelete, "/api/knowledge-bases/operations-handbook", nil, adminCookie)
+	if remove.Code != http.StatusNoContent {
+		t.Fatalf("delete knowledge base status = %d, body = %s", remove.Code, remove.Body.String())
+	}
+	missing := performJSON(t, handler, http.MethodGet, "/api/knowledge-bases/operations-handbook", nil, adminCookie)
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("deleted knowledge base status = %d, want 404", missing.Code)
+	}
+}
+
 func TestMediaUploadPersistsAndSupportsRangeRequests(t *testing.T) {
 	repository := store.NewMemoryRepository()
 	adminHash, err := bcAuth.HashPassword("admin-password-for-tests")

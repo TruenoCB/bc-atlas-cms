@@ -21,7 +21,7 @@ func (server *Server) knowledgeBases(writer http.ResponseWriter, request *http.R
 		user := server.currentUser(request)
 		visible := make([]domain.KnowledgeBase, 0, len(items))
 		for _, item := range items {
-			if item.Visibility == "public" || (item.Visibility == "members" && user != nil) || (item.Visibility == "private" && user != nil && user.CanPublish()) {
+			if canReadKnowledgeBase(item, user) {
 				visible = append(visible, item)
 			}
 		}
@@ -38,6 +38,7 @@ func (server *Server) knowledgeBases(writer http.ResponseWriter, request *http.R
 			writeError(writer, http.StatusBadRequest, "invalid JSON body")
 			return
 		}
+		input.AuthorID = user.ID
 		created, err := server.repository.CreateKnowledgeBase(request.Context(), input)
 		if err != nil {
 			writeError(writer, http.StatusUnprocessableEntity, err.Error())
@@ -52,6 +53,10 @@ func (server *Server) knowledgeBases(writer http.ResponseWriter, request *http.R
 func (server *Server) knowledgeBaseRoutes(writer http.ResponseWriter, request *http.Request) {
 	path := strings.Trim(strings.TrimPrefix(request.URL.Path, "/api/knowledge-bases/"), "/")
 	parts := strings.Split(path, "/")
+	if len(parts) == 1 && parts[0] != "" {
+		server.knowledgeBase(writer, request, parts[0])
+		return
+	}
 	if len(parts) < 2 || parts[0] == "" || parts[1] != "pages" {
 		writeError(writer, http.StatusNotFound, "knowledge resource not found")
 		return
@@ -66,6 +71,52 @@ func (server *Server) knowledgeBaseRoutes(writer http.ResponseWriter, request *h
 		return
 	}
 	writeError(writer, http.StatusNotFound, "knowledge resource not found")
+}
+
+func (server *Server) knowledgeBase(writer http.ResponseWriter, request *http.Request, baseSlug string) {
+	base, err := server.repository.FindKnowledgeBase(request.Context(), baseSlug)
+	if err != nil {
+		writeError(writer, http.StatusNotFound, "knowledge base not found")
+		return
+	}
+	user := server.currentUser(request)
+	switch request.Method {
+	case http.MethodGet:
+		if !canReadKnowledgeBase(base, user) {
+			writeError(writer, http.StatusNotFound, "knowledge base not found")
+			return
+		}
+		writeJSON(writer, http.StatusOK, base)
+	case http.MethodPut:
+		if !canManageKnowledgeBase(base, user) {
+			writeError(writer, http.StatusForbidden, "only the author or an administrator can edit this knowledge base")
+			return
+		}
+		request.Body = http.MaxBytesReader(writer, request.Body, 128<<10)
+		var input domain.KnowledgeBaseInput
+		if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+			writeError(writer, http.StatusBadRequest, "invalid JSON body")
+			return
+		}
+		updated, err := server.repository.UpdateKnowledgeBase(request.Context(), baseSlug, input)
+		if err != nil {
+			writeError(writer, http.StatusUnprocessableEntity, err.Error())
+			return
+		}
+		writeJSON(writer, http.StatusOK, updated)
+	case http.MethodDelete:
+		if !canManageKnowledgeBase(base, user) {
+			writeError(writer, http.StatusForbidden, "only the author or an administrator can delete this knowledge base")
+			return
+		}
+		if err := server.repository.DeleteKnowledgeBase(request.Context(), baseSlug); err != nil {
+			writeError(writer, http.StatusNotFound, "knowledge base not found")
+			return
+		}
+		writer.WriteHeader(http.StatusNoContent)
+	default:
+		methodNotAllowed(writer, http.MethodGet, http.MethodPut, http.MethodDelete)
+	}
 }
 
 func (server *Server) knowledgePages(writer http.ResponseWriter, request *http.Request, baseSlug string) {
@@ -104,6 +155,15 @@ func (server *Server) knowledgePages(writer http.ResponseWriter, request *http.R
 		user := server.currentUser(request)
 		if user == nil || !user.CanPublish() {
 			writeError(writer, http.StatusForbidden, "editor access is required")
+			return
+		}
+		base, err := server.repository.FindKnowledgeBase(request.Context(), baseSlug)
+		if err != nil {
+			writeError(writer, http.StatusNotFound, "knowledge base not found")
+			return
+		}
+		if !canManageKnowledgeBase(base, user) {
+			writeError(writer, http.StatusForbidden, "only the collection author or an administrator can add pages")
 			return
 		}
 		input, ok := decodeKnowledgePageInput(writer, request)
@@ -150,27 +210,22 @@ func (server *Server) knowledgePages(writer http.ResponseWriter, request *http.R
 }
 
 func (server *Server) canReadKnowledgeBase(request *http.Request, baseSlug string, user *domain.User) bool {
-	items, err := server.repository.ListKnowledgeBases(request.Context())
-	if err != nil {
-		return false
-	}
-	for _, item := range items {
-		if item.Slug != baseSlug {
-			continue
-		}
-		return item.Visibility == "public" || (item.Visibility == "members" && user != nil) || (item.Visibility == "private" && user != nil && user.CanPublish())
-	}
-	return false
+	item, err := server.repository.FindKnowledgeBase(request.Context(), baseSlug)
+	return err == nil && canReadKnowledgeBase(item, user)
 }
 
 func (server *Server) knowledgePage(writer http.ResponseWriter, request *http.Request, baseSlug, pageSlug string) {
+	user := server.currentUser(request)
+	if !server.canReadKnowledgeBase(request, baseSlug, user) {
+		writeError(writer, http.StatusNotFound, "knowledge base not found")
+		return
+	}
 	if request.Method == http.MethodGet {
 		item, err := server.repository.FindKnowledgePage(request.Context(), baseSlug, pageSlug)
 		if err != nil {
 			writeError(writer, http.StatusNotFound, "knowledge page not found")
 			return
 		}
-		user := server.currentUser(request)
 		if item.Status != "published" && !canManageKnowledgePage(item, user) {
 			writeError(writer, http.StatusNotFound, "knowledge page not found")
 			return
@@ -191,7 +246,6 @@ func (server *Server) knowledgePage(writer http.ResponseWriter, request *http.Re
 		writeJSON(writer, http.StatusOK, item)
 		return
 	}
-	user := server.currentUser(request)
 	if user == nil || !user.CanPublish() {
 		writeError(writer, http.StatusForbidden, "editor access is required")
 		return
@@ -265,6 +319,14 @@ func (server *Server) knowledgePage(writer http.ResponseWriter, request *http.Re
 
 func canManageKnowledgePage(page domain.KnowledgePage, user *domain.User) bool {
 	return user != nil && (user.Role == domain.RoleAdmin || (user.Role == domain.RoleEditor && page.AuthorID == user.ID))
+}
+
+func canManageKnowledgeBase(base domain.KnowledgeBase, user *domain.User) bool {
+	return user != nil && (user.Role == domain.RoleAdmin || (user.Role == domain.RoleEditor && base.AuthorID == user.ID))
+}
+
+func canReadKnowledgeBase(base domain.KnowledgeBase, user *domain.User) bool {
+	return base.Visibility == "public" || (base.Visibility == "members" && user != nil) || (base.Visibility == "private" && canManageKnowledgeBase(base, user))
 }
 
 func decodeKnowledgePageInput(writer http.ResponseWriter, request *http.Request) (domain.KnowledgePageInput, bool) {

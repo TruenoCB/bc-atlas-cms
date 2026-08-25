@@ -16,6 +16,17 @@ func (repository *MemoryRepository) ListKnowledgeBases(_ context.Context) ([]dom
 	return items, nil
 }
 
+func (repository *MemoryRepository) FindKnowledgeBase(_ context.Context, slug string) (domain.KnowledgeBase, error) {
+	repository.mu.RLock()
+	defer repository.mu.RUnlock()
+	for _, item := range repository.knowledgeBases {
+		if item.Slug == slug {
+			return item, nil
+		}
+	}
+	return domain.KnowledgeBase{}, ErrNotFound
+}
+
 func (repository *MemoryRepository) CreateKnowledgeBase(_ context.Context, input domain.KnowledgeBaseInput) (domain.KnowledgeBase, error) {
 	if err := input.Validate(); err != nil {
 		return domain.KnowledgeBase{}, err
@@ -32,9 +43,60 @@ func (repository *MemoryRepository) CreateKnowledgeBase(_ context.Context, input
 		return domain.KnowledgeBase{}, err
 	}
 	now := time.Now().UTC()
-	item := domain.KnowledgeBase{ID: id, Slug: input.Slug, Title: input.Title, Description: input.Description, CoverURL: input.CoverURL, Visibility: input.Visibility, Position: input.Position, CreatedAt: now, UpdatedAt: now}
+	item := domain.KnowledgeBase{ID: id, AuthorID: input.AuthorID, Slug: input.Slug, Title: input.Title, Description: input.Description, CoverURL: input.CoverURL, Visibility: input.Visibility, Position: input.Position, CreatedAt: now, UpdatedAt: now}
 	repository.knowledgeBases = append(repository.knowledgeBases, item)
 	return item, nil
+}
+
+func (repository *MemoryRepository) UpdateKnowledgeBase(_ context.Context, slug string, input domain.KnowledgeBaseInput) (domain.KnowledgeBase, error) {
+	if err := input.Validate(); err != nil {
+		return domain.KnowledgeBase{}, err
+	}
+	repository.mu.Lock()
+	defer repository.mu.Unlock()
+	for index, item := range repository.knowledgeBases {
+		if item.Slug != slug {
+			continue
+		}
+		for otherIndex, other := range repository.knowledgeBases {
+			if otherIndex != index && other.Slug == input.Slug {
+				return domain.KnowledgeBase{}, ErrConflict
+			}
+		}
+		item.Slug = input.Slug
+		item.Title = input.Title
+		item.Description = input.Description
+		item.CoverURL = input.CoverURL
+		item.Visibility = input.Visibility
+		item.Position = input.Position
+		item.UpdatedAt = time.Now().UTC()
+		repository.knowledgeBases[index] = item
+		return item, nil
+	}
+	return domain.KnowledgeBase{}, ErrNotFound
+}
+
+func (repository *MemoryRepository) DeleteKnowledgeBase(_ context.Context, slug string) error {
+	repository.mu.Lock()
+	defer repository.mu.Unlock()
+	baseID := repository.knowledgeBaseID(slug)
+	if baseID == "" {
+		return ErrNotFound
+	}
+	for index, item := range repository.knowledgeBases {
+		if item.ID == baseID {
+			repository.knowledgeBases = append(repository.knowledgeBases[:index], repository.knowledgeBases[index+1:]...)
+			break
+		}
+	}
+	pages := repository.knowledgePages[:0]
+	for _, page := range repository.knowledgePages {
+		if page.KnowledgeBaseID != baseID {
+			pages = append(pages, page)
+		}
+	}
+	repository.knowledgePages = pages
+	return nil
 }
 
 func (repository *MemoryRepository) ListKnowledgePages(_ context.Context, baseSlug string) ([]domain.KnowledgePage, error) {

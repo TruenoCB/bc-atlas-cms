@@ -15,13 +15,17 @@ An editor or administrator opens the account control in the top-right header and
 - Published
 - Archived
 
-Search covers type, title, slug, and summary. Each row exposes Preview and Duplicate. The author or an administrator also receives Edit, Publish/Unpublish, Archive, and Delete.
+Search covers type, title, slug, summary, and knowledge-base context. Article records, `knowledge base` collections, and `knowledge page` documents appear together in the same Workspace list. Each row exposes Preview; articles also expose Duplicate. The author or an administrator also receives Edit, Publish/Unpublish, Archive, and Delete where that operation applies.
 
 `New content`, `Edit`, and `Duplicate` reuse the same Composer:
 
 - Create starts from an empty content model.
 - Edit hydrates the original typed tags, cover, media reference, footprint properties, visibility, status, and Markdown, then updates by the original slug.
 - Duplicate copies the source into a new slug and starts as a Draft.
+
+Edit is a side-by-side authoring surface: Markdown source is on the left and the rendered preview is on the right. This applies to both ordinary content and knowledge documents. A content or knowledge preview also includes an Edit action for its author or an administrator, so no return trip to Workspace is required.
+
+Knowledge bases are collection records rather than ordinary articles, because their ordered chapter tree needs durable parent/child relations. They are still first-class Workspace rows. The base creator owns its collection; each knowledge page has its own author. Editors manage only the records they authored, while administrators manage all records.
 
 ### Inline images in Markdown
 
@@ -94,6 +98,7 @@ Draft and Archived bodies are never readable by a guest through a guessed slug. 
 | Manage another author's content | no | no | no | yes |
 | Read private content | no | no | own only | all |
 | Create knowledge bases/pages | no | no | yes | yes |
+| Manage own knowledge base and pages | no | no | yes | yes |
 | Manage another author's knowledge page | no | no | no | yes |
 | Manage users and roles | no | no | no | not exposed yet |
 

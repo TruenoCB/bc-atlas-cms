@@ -163,6 +163,18 @@ export async function createKnowledgeBase(input) {
   return request("/api/knowledge-bases", { method: "POST", body: JSON.stringify(input) });
 }
 
+export async function getKnowledgeBase(baseSlug) {
+  return request(`/api/knowledge-bases/${encodeURIComponent(baseSlug)}`);
+}
+
+export async function updateKnowledgeBase(baseSlug, input) {
+  return request(`/api/knowledge-bases/${encodeURIComponent(baseSlug)}`, { method: "PUT", body: JSON.stringify(input) });
+}
+
+export async function deleteKnowledgeBase(baseSlug) {
+  return request(`/api/knowledge-bases/${encodeURIComponent(baseSlug)}`, { method: "DELETE", body: "{}" });
+}
+
 export async function listKnowledgePages(baseSlug) {
   try {
     const payload = await request(`/api/knowledge-bases/${encodeURIComponent(baseSlug)}/pages`);
@@ -171,6 +183,10 @@ export async function listKnowledgePages(baseSlug) {
     if (error instanceof ApiError || !allowDemoFallback) throw error;
     return seedKnowledgePages[baseSlug] ?? [];
   }
+}
+
+export async function getKnowledgePage(baseSlug, pageSlug) {
+  return request(`/api/knowledge-bases/${encodeURIComponent(baseSlug)}/pages/${encodeURIComponent(pageSlug)}`);
 }
 
 export async function createKnowledgePage(baseSlug, input) {

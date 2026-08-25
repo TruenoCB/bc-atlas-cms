@@ -44,11 +44,11 @@ export function PublishFootprintDialog({ open, composerMode = "create", initialV
   useEffect(() => {
     if (!open) return;
     setForm({ ...initialForm, ...(initialValue ?? {}) });
-    setMode("write");
+    setMode(composerMode === "edit" ? "split" : "write");
     setStatus("idle");
     setError("");
     setUploading(false);
-  }, [open, initialValue]);
+  }, [open, initialValue, composerMode]);
 
   const coordinatesValid = useMemo(() => {
     if (form.kind !== "footprint") return true;
@@ -287,6 +287,7 @@ export function PublishFootprintDialog({ open, composerMode = "create", initialV
           <div className="editor-toolbar" role="tablist" aria-label="Markdown editor mode">
             <button type="button" className={mode === "write" ? "active" : ""} onClick={() => setMode("write")}><Code size={14} />Write</button>
             <button type="button" className={mode === "preview" ? "active" : ""} onClick={() => setMode("preview")}><Eye size={14} />Preview</button>
+            <button type="button" className={mode === "split" ? "active" : ""} onClick={() => setMode("split")}><Code size={14} /><Eye size={14} />Split</button>
             <button
               type="button"
               onClick={() => {
@@ -337,7 +338,23 @@ export function PublishFootprintDialog({ open, composerMode = "create", initialV
             />
           </div>
           <div className="schema-note"><Code size={15} /><span>Paste an image, or use <strong>Insert image</strong> / <strong>Insert video</strong>; each upload is stored in private S3 and inserted as a <code>/media/…</code> Markdown URL. Local MP4 and WebM play inline. Safe external video: <code>[embed](https://youtube.com/...)</code> · sandboxed HTML: <code>```html-sandbox</code></span></div>
-          {mode === "write" ? (
+          {mode === "split" ? (
+            <div className="markdown-split-editor">
+              <textarea
+                ref={markdownRef}
+                className="markdown-editor"
+                rows="14"
+                value={form.bodyMarkdown}
+                onChange={(event) => update("bodyMarkdown", event.target.value)}
+                onSelect={rememberMarkdownSelection}
+                onClick={rememberMarkdownSelection}
+                onKeyUp={rememberMarkdownSelection}
+                onPaste={handleInlineImagePaste}
+                placeholder="Write in Markdown. Paste an image or use Insert image. GFM and LaTeX are supported."
+              />
+              <div className="markdown-preview markdown-body"><MarkdownContent body={form.bodyMarkdown} className="markdown-preview-content" /></div>
+            </div>
+          ) : mode === "write" ? (
             <textarea
               ref={markdownRef}
               className="markdown-editor"

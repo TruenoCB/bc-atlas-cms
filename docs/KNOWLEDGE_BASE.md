@@ -19,6 +19,14 @@ The implementation was visually grounded in [CookLLM](https://cookllm.com/docs) 
 
 An editor can create multiple knowledge bases and then publish top-level or child pages. Sibling order is controlled by the numeric `position` field. Page slugs only need to be unique inside their knowledge base.
 
+Knowledge is deliberately **not** forced into the ordinary `contents` table. A knowledge base is a typed collection with a stable cover, collection visibility, numeric ordering, and an adjacency-list chapter tree; a knowledge page has its own parent, position, lifecycle, and author. Flattening those relations into article tags would make reordering, deleting a chapter safely, and building the reader navigation substantially less reliable.
+
+It is nevertheless managed alongside articles: Workspace projects both `knowledge base` and `knowledge page` entries into the same searchable All content / Drafts / Published / Archived surface. The familiar Preview, Edit, Publish/Unpublish, Archive, and Delete actions are available where the corresponding record has that lifecycle. Collection rows open the library; document rows open the selected chapter.
+
+Opening **Edit** on a document uses the same authoring pattern as articles: Markdown source is on the left and a live rendered preview is on the right. The page reader also exposes **Edit** directly to its author or an administrator. Creating a document uses that same composer in create mode.
+
+Knowledge-base ownership is explicit. The editor who creates a base becomes its author; that author or an administrator can rename, change visibility/order/cover, create chapters, or delete the collection. Deleting a collection deletes its contained pages. A document remains owned independently by the editor who created it, and an editor can edit/delete only their own document pages.
+
 ### Markdown and LaTeX
 
 Knowledge pages use the same GFM and KaTeX pipeline as articles:
@@ -82,10 +90,11 @@ The block runs inside an iframe with `sandbox="allow-scripts"` and a restrictive
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET/POST` | `/api/knowledge-bases` | list or create knowledge bases |
+| `GET/PUT/DELETE` | `/api/knowledge-bases/{base}` | read, edit, or delete one knowledge base |
 | `GET/POST` | `/api/knowledge-bases/{base}/pages` | list or create pages |
 | `GET/PUT/DELETE` | `/api/knowledge-bases/{base}/pages/{page}` | read, update, or delete a page |
 
-Writes require an editor or admin session. Member and private visibility are enforced by the Go API.
+Writes require an editor or admin session. Ownership is enforced by the Go API, not merely hidden UI controls. Member and private visibility are also enforced by the API.
 
 ## Why not add Docusaurus/Nextra/Fumadocs
 
