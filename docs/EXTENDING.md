@@ -38,7 +38,7 @@ content
 
 Create a dedicated table only when the module has relationships or invariants that do not fit an article. Knowledge pages use dedicated tables because hierarchy, sibling ordering, and per-base slugs require foreign keys and efficient tree queries.
 
-Reusable presentation metadata follows the same rule. Article, thought, gallery, and footprint title images use a `cover` tag (`url`, `alt`). A knowledge-base title image uses `knowledge_bases.cover_url` because it describes the collection itself. New renderers should call `resolveContentCover` rather than reading a specific field directly.
+Reusable presentation metadata follows the same rule. Article, thought, gallery, and footprint title images use a `cover` tag (`url`, `alt`). A knowledge-base title image uses `knowledge_base_details.cover_url` because it describes the collection itself. New renderers should call `resolveContentCover` rather than reading a specific field directly.
 
 ## Add infrastructure
 

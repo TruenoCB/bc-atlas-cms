@@ -135,6 +135,26 @@ func TestMembershipVisibilityPublishingAndKnowledge(t *testing.T) {
 	if pageRead.Code != http.StatusOK {
 		t.Fatalf("knowledge page read status = %d, body = %s", pageRead.Code, pageRead.Body.String())
 	}
+	// Knowledge is exposed through the same content stream used by the owner
+	// workspace. Its route and tree data are attached from the type extensions,
+	// not copied into a separate legacy model.
+	allContent := performJSON(t, handler, http.MethodGet, "/api/contents?status=all", nil, adminCookie)
+	if allContent.Code != http.StatusOK {
+		t.Fatalf("unified content list status = %d, body = %s", allContent.Code, allContent.Body.String())
+	}
+	var unifiedPayload struct {
+		Items []domain.Content `json:"items"`
+	}
+	decodeResponse(t, allContent, &unifiedPayload)
+	var foundKnowledgePage bool
+	for _, item := range unifiedPayload.Items {
+		if item.Type == "knowledge_page" && item.KnowledgePageSlug == "recovery-paths" {
+			foundKnowledgePage = item.KnowledgeBaseSlug == "systems-field-manual" && item.ParentID == "kp-calm-root"
+		}
+	}
+	if !foundKnowledgePage {
+		t.Fatalf("unified content list did not expose the new knowledge page relation: %#v", unifiedPayload.Items)
+	}
 	adminPublish := performJSON(t, handler, http.MethodPost, "/api/contents", footprintInput("admin-published-footprint"), adminCookie)
 	if adminPublish.Code != http.StatusCreated {
 		t.Fatalf("admin publish status = %d, body = %s", adminPublish.Code, adminPublish.Body.String())

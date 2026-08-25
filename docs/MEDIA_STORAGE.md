@@ -5,7 +5,7 @@
 | Data | Store | Reason |
 | --- | --- | --- |
 | Article and Thought Markdown | private S3-compatible object storage | canonical document bytes, immutable revisions, cheap backup/migration |
-| Knowledge documents | private S3-compatible object storage | canonical document bytes while hierarchy and access rules stay in MySQL |
+| Knowledge-page documents | private S3-compatible object storage | canonical document bytes while hierarchy and access rules stay in MySQL |
 | Titles, summaries, state, users, comments, typed tags | MySQL | relational consistency |
 | Search projection | MySQL `content_search` | keyword search without loading Markdown from S3 for every list query |
 | Image, video, audio, PDF, archive, and other file bytes | private S3-compatible bucket | large-object streaming and independent lifecycle |
@@ -18,7 +18,8 @@ use the same authenticated `/api/media` endpoint. The UI receives the generated
 same-origin URL and inserts it into the Markdown; it does not expose the MinIO
 endpoint or credentials. Local video links with an `.mp4`, `.webm`, `.m4v`,
 `.mov`, or `.ogv` extension render as native players. A title image uses the
-separate `cover` tag rather than body Markdown.
+separate `cover` tag rather than body Markdown. A knowledge-base collection
+uses `knowledge_base_details.cover_url` because it is a container content type.
 
 ## Media Library
 
@@ -45,7 +46,7 @@ bc-content/
 
 The key is generated from an internal UUID, never from a title or user filename. Every write uploads the next revision before the MySQL transaction commits. If MySQL rejects the update, the newly uploaded object is deleted. Reads verify the recorded byte size and SHA-256 hash before returning the body. Old revisions are intentionally retained so a later history UI or rollback workflow can be added without changing the storage contract.
 
-The `content_search` table stores title, summary, normalized Markdown text, and tag text. The API still uses a case-insensitive `LIKE` query today, so the feature remains portable and works for non-Latin text; the table also has a MySQL FULLTEXT index for a future high-volume search adapter.
+The `content_search` table stores title, summary, normalized Markdown text, and tag text for articles and knowledge pages. The API still uses a case-insensitive `LIKE` query today, so the feature remains portable and works for non-Latin text; the table also has a MySQL FULLTEXT index for a future high-volume search adapter.
 
 ## Object layout and upload transaction
 

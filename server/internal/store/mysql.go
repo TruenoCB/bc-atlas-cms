@@ -24,11 +24,11 @@ var membershipMigration string
 //go:embed migrations/003_comments.sql
 var commentsMigration string
 
-//go:embed migrations/004_knowledge.sql
-var knowledgeMigration string
-
 //go:embed migrations/005_content_storage.sql
 var contentStorageMigration string
+
+//go:embed migrations/006_unified_content.sql
+var unifiedContentMigration string
 
 type MySQLRepository struct {
 	db *sql.DB
@@ -117,7 +117,7 @@ func (repository *MySQLRepository) ListMediaObjects(ctx context.Context, filter 
 }
 
 func (repository *MySQLRepository) Migrate(ctx context.Context) error {
-	for _, migration := range []string{initialMigration, membershipMigration, commentsMigration, knowledgeMigration, contentStorageMigration} {
+	for _, migration := range []string{initialMigration, membershipMigration, commentsMigration, contentStorageMigration, unifiedContentMigration} {
 		for _, statement := range strings.Split(migration, ";") {
 			statement = strings.TrimSpace(statement)
 			if statement == "" {
@@ -131,16 +131,52 @@ func (repository *MySQLRepository) Migrate(ctx context.Context) error {
 	if err := repository.ensureContentsAuthorColumn(ctx); err != nil {
 		return err
 	}
-	if err := repository.ensureKnowledgeBaseCoverColumn(ctx); err != nil {
-		return err
-	}
-	if err := repository.ensureKnowledgeBaseAuthorColumn(ctx); err != nil {
-		return err
-	}
 	if err := repository.ensureContentStorageSchema(ctx); err != nil {
 		return err
 	}
-	return repository.ensureMediaObjectIndexes(ctx)
+	if err := repository.ensureContentIndexes(ctx); err != nil {
+		return err
+	}
+	if err := repository.ensureMediaObjectIndexes(ctx); err != nil {
+		return err
+	}
+	return repository.seedContentTypes(ctx)
+}
+
+func (repository *MySQLRepository) ensureContentIndexes(ctx context.Context) error {
+	var count int
+	if err := repository.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'contents' AND INDEX_NAME = 'idx_contents_type'`).Scan(&count); err != nil {
+		return err
+	}
+	if count == 0 {
+		_, err := repository.db.ExecContext(ctx, `CREATE INDEX idx_contents_type ON contents (content_type, status, visibility, published_at)`)
+		return err
+	}
+	return nil
+}
+
+func (repository *MySQLRepository) seedContentTypes(ctx context.Context) error {
+	now := time.Now().UTC()
+	types := []struct{ slug, name, description, renderer string }{
+		{"article", "Article", "Long-form editorial writing.", "essay"},
+		{"thought", "Thought", "Short notes and observations.", "compact"},
+		{"gallery", "Gallery", "A media-led collection.", "gallery"},
+		{"video", "Video", "A video-led publication.", "video"},
+		{"page", "Page", "A standalone Markdown page.", "markdown"},
+		{"knowledge_base", "Knowledge base", "A collection container for ordered documentation.", "knowledge-catalog"},
+		{"knowledge_page", "Knowledge page", "A document inside a knowledge base tree.", "knowledge-page"},
+	}
+	for _, item := range types {
+		if _, err := repository.db.ExecContext(ctx, `INSERT INTO content_types
+          (slug, name, description, renderer, is_system, created_at, updated_at)
+          VALUES (?, ?, ?, ?, TRUE, ?, ?)
+          ON DUPLICATE KEY UPDATE name = VALUES(name), description = VALUES(description), renderer = VALUES(renderer), updated_at = VALUES(updated_at)`,
+			item.slug, item.name, item.description, item.renderer, now, now); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (repository *MySQLRepository) ensureMediaObjectIndexes(ctx context.Context) error {
@@ -176,10 +212,6 @@ func (repository *MySQLRepository) ensureContentStorageSchema(ctx context.Contex
 		{table: "contents", name: "body_revision", spec: "INT NOT NULL DEFAULT 0 AFTER body_object_key"},
 		{table: "contents", name: "body_hash", spec: "CHAR(64) NOT NULL DEFAULT '' AFTER body_revision"},
 		{table: "contents", name: "body_size", spec: "BIGINT NOT NULL DEFAULT 0 AFTER body_hash"},
-		{table: "knowledge_pages", name: "body_object_key", spec: "VARCHAR(512) NOT NULL DEFAULT '' AFTER body_markdown"},
-		{table: "knowledge_pages", name: "body_revision", spec: "INT NOT NULL DEFAULT 0 AFTER body_object_key"},
-		{table: "knowledge_pages", name: "body_hash", spec: "CHAR(64) NOT NULL DEFAULT '' AFTER body_revision"},
-		{table: "knowledge_pages", name: "body_size", spec: "BIGINT NOT NULL DEFAULT 0 AFTER body_hash"},
 	}
 	for _, column := range columns {
 		var count int
@@ -194,35 +226,6 @@ func (repository *MySQLRepository) ensureContentStorageSchema(ctx context.Contex
 		}
 	}
 	return nil
-}
-
-func (repository *MySQLRepository) ensureKnowledgeBaseCoverColumn(ctx context.Context) error {
-	var count int
-	if err := repository.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.COLUMNS
-      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'knowledge_bases' AND COLUMN_NAME = 'cover_url'`).Scan(&count); err != nil {
-		return err
-	}
-	if count > 0 {
-		return nil
-	}
-	_, err := repository.db.ExecContext(ctx, `ALTER TABLE knowledge_bases ADD COLUMN cover_url VARCHAR(2048) NOT NULL DEFAULT '' AFTER description`)
-	return err
-}
-
-func (repository *MySQLRepository) ensureKnowledgeBaseAuthorColumn(ctx context.Context) error {
-	var count int
-	if err := repository.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.COLUMNS
-      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'knowledge_bases' AND COLUMN_NAME = 'author_id'`).Scan(&count); err != nil {
-		return err
-	}
-	if count > 0 {
-		return nil
-	}
-	_, err := repository.db.ExecContext(ctx, `ALTER TABLE knowledge_bases
-      ADD COLUMN author_id CHAR(36) NULL AFTER id,
-      ADD INDEX idx_knowledge_bases_author (author_id),
-      ADD CONSTRAINT fk_knowledge_base_author FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE SET NULL`)
-	return err
 }
 
 func (repository *MySQLRepository) ensureContentsAuthorColumn(ctx context.Context) error {
@@ -371,6 +374,9 @@ func (repository *MySQLRepository) ListContents(ctx context.Context, filter doma
 		if err != nil {
 			return nil, err
 		}
+		if err := repository.attachKnowledgeMetadata(ctx, &content); err != nil {
+			return nil, err
+		}
 		contents = append(contents, content)
 	}
 	return contents, rows.Err()
@@ -512,7 +518,13 @@ func (repository *MySQLRepository) FindBySlug(ctx context.Context, slug string) 
 		return domain.Content{}, err
 	}
 	content.Tags, err = repository.loadTags(ctx, content.ID)
-	return content, err
+	if err != nil {
+		return content, err
+	}
+	if err := repository.attachKnowledgeMetadata(ctx, &content); err != nil {
+		return content, err
+	}
+	return content, nil
 }
 
 type scanner interface {

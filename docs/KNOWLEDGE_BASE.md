@@ -19,7 +19,7 @@ The implementation was visually grounded in [CookLLM](https://cookllm.com/docs) 
 
 An editor can create multiple knowledge bases and then publish top-level or child pages. Sibling order is controlled by the numeric `position` field. Page slugs only need to be unique inside their knowledge base.
 
-Knowledge is deliberately **not** forced into the ordinary `contents` table. A knowledge base is a typed collection with a stable cover, collection visibility, numeric ordering, and an adjacency-list chapter tree; a knowledge page has its own parent, position, lifecycle, and author. Flattening those relations into article tags would make reordering, deleting a chapter safely, and building the reader navigation substantially less reliable.
+Knowledge is a pair of first-class content types in the ordinary `contents` table: `knowledge_base` and `knowledge_page`. A base gets its catalogue-only fields from `knowledge_base_details`; a page gets its base membership, parent, route slug, and order from `knowledge_structure`. This keeps common authoring, permissions, lifecycle, MinIO body storage, Workspace management, and keyword search unified without flattening the chapter tree into article tags.
 
 It is nevertheless managed alongside articles: Workspace projects both `knowledge base` and `knowledge page` entries into the same searchable All content / Drafts / Published / Archived surface. The familiar Preview, Edit, Publish/Unpublish, Archive, and Delete actions are available where the corresponding record has that lifecycle. Collection rows open the library; document rows open the selected chapter.
 
@@ -51,7 +51,7 @@ Upload an image in the editor. The returned S3 URL is inserted using normal Mark
 ![Architecture overview](https://media.example/object.png)
 ```
 
-A knowledge base may also have a dedicated `coverUrl` uploaded to S3. Catalog cover resolution is: explicit `coverUrl`, then the first image found in one of its pages, then the built-in book/pixel fallback. `knowledge_bases.cover_url` is separate from content tags because a knowledge base is a collection entity rather than an article.
+A knowledge base may also have a dedicated `coverUrl` uploaded to S3. Catalog cover resolution is: explicit `coverUrl`, then the first image found in one of its pages, then the built-in book/pixel fallback. The URL lives in `knowledge_base_details.cover_url`; the base itself is a `contents` row of type `knowledge_base`.
 
 ### Video
 
