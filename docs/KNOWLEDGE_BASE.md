@@ -23,7 +23,9 @@ Knowledge is a pair of first-class content types in the ordinary `contents` tabl
 
 It is nevertheless managed alongside articles: Workspace projects both `knowledge base` and `knowledge page` entries into the same searchable All content / Drafts / Published / Archived surface. The familiar Preview, Edit, Publish/Unpublish, Archive, and Delete actions are available where the corresponding record has that lifecycle. Collection rows open the library; document rows open the selected chapter.
 
-Opening **Edit** on a document uses the same authoring pattern as articles: Markdown source is on the left and a live rendered preview is on the right. The page reader also exposes **Edit** directly to its author or an administrator. Creating a document uses that same composer in create mode.
+Opening **Edit** on a document uses the same authoring pattern as articles: Markdown source is on the left and a live rendered preview is on the right. That compact split occupies the full editor width, and **Full screen** promotes it into the shared resource/source/preview workspace without losing the draft. The page reader also exposes **Edit** directly to its author or an administrator. Creating a document uses that same composer in create mode.
+
+Published pages are shareable at `/knowledge/{baseSlug}/{pageSlug}`. Opening another tree item updates browser history, while Back/Forward restores the matching base and page. Level 2–4 Markdown headings form the right-hand desktop table of contents and a collapsible inline table of contents on portrait screens.
 
 Knowledge-base ownership is explicit. The editor who creates a base becomes its author; that author or an administrator can rename, change visibility/order/cover, create chapters, or delete the collection. Deleting a collection deletes its contained pages. A document remains owned independently by the editor who created it, and an editor can edit/delete only their own document pages.
 
@@ -48,7 +50,7 @@ $$E = mc^2$$
 Upload an image in the editor. The returned S3 URL is inserted using normal Markdown:
 
 ```markdown
-![Architecture overview](https://media.example/object.png)
+![Architecture overview](/media/2026/08/object.png)
 ```
 
 A knowledge base may also have a dedicated `coverUrl` uploaded to S3. Catalog cover resolution is: explicit `coverUrl`, then the first image found in one of its pages, then the built-in book/pixel fallback. The URL lives in `knowledge_base_details.cover_url`; the base itself is a `contents` row of type `knowledge_base`.
@@ -58,7 +60,7 @@ A knowledge base may also have a dedicated `coverUrl` uploaded to S3. Catalog co
 Upload a video and link to its URL. Links ending in `.mp4`, `.webm`, `.m4v`, or `.mov` render as a native video player:
 
 ```markdown
-[Training clip](https://media.example/clip.mp4)
+[Training clip](/media/2026/08/clip.mp4)
 ```
 
 For an external player, use an explicit allowlisted embed link. YouTube, Vimeo, and Bilibili are supported; an ordinary link to another host remains an ordinary safe anchor:

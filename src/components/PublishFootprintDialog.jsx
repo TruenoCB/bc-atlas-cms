@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Code, Eye, MapPin, UploadSimple, X } from "@phosphor-icons/react";
+import { ArrowsOutSimple, Check, Code, Eye, MapPin, UploadSimple, X } from "@phosphor-icons/react";
 import { uploadMedia } from "../lib/api.js";
 import { PrimarySpecularButton } from "./SpecularButton.jsx";
 import { MarkdownContent } from "./MarkdownContent.jsx";
+import { FullscreenMarkdownEditor } from "./FullscreenMarkdownEditor.jsx";
 
 const initialForm = {
   kind: "article",
@@ -36,6 +37,7 @@ export function PublishFootprintDialog({ open, composerMode = "create", initialV
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [fullscreenEditorOpen, setFullscreenEditorOpen] = useState(false);
   const markdownRef = useRef(null);
   const inlineImageInputRef = useRef(null);
   const inlineVideoInputRef = useRef(null);
@@ -48,6 +50,7 @@ export function PublishFootprintDialog({ open, composerMode = "create", initialV
     setStatus("idle");
     setError("");
     setUploading(false);
+    setFullscreenEditorOpen(false);
   }, [open, initialValue, composerMode]);
 
   const coordinatesValid = useMemo(() => {
@@ -314,6 +317,9 @@ export function PublishFootprintDialog({ open, composerMode = "create", initialV
             >
               <UploadSimple size={14} />{uploading ? "Uploading…" : "Insert video"}
             </button>
+            <button type="button" className="editor-expand-action" onClick={() => setFullscreenEditorOpen(true)}>
+              <ArrowsOutSimple size={14} />Full screen
+            </button>
             <input
               ref={inlineImageInputRef}
               type="file"
@@ -381,6 +387,13 @@ export function PublishFootprintDialog({ open, composerMode = "create", initialV
             </PrimarySpecularButton>
           </footer>
         </form>
+        <FullscreenMarkdownEditor
+          open={fullscreenEditorOpen}
+          value={form.bodyMarkdown}
+          title={form.title || "Untitled content"}
+          onChange={(bodyMarkdown) => update("bodyMarkdown", bodyMarkdown)}
+          onClose={() => setFullscreenEditorOpen(false)}
+        />
       </section>
     </div>
   );
