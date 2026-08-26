@@ -27,11 +27,14 @@ For editors and administrators, Workspace → **Media library** reads the
 `media_objects` index from MySQL and returns the generated same-origin
 `/media/{object-key}` URL. It supports filename/object-key/MIME search, type
 filters, browser previews, and copying either the URL or Markdown syntax. The
-S3 bucket remains private and is not browsed directly by the client.
+result is paged in 100-file windows. The S3 bucket remains private and is not
+browsed directly by the client.
 
-The library currently lists and uploads but does not delete objects. The index
-does not yet record every Markdown reference, so destructive cleanup must wait
-for a reference-aware maintenance operation.
+Editors and administrators can permanently delete an indexed file after an
+explicit confirmation. Deletion removes the private S3 object first and then
+its `media_objects` row. The index does not record every Markdown reference,
+so the confirmation warns that existing article or knowledge-page links may
+break; use search or a content backup before deleting a shared asset.
 
 ## Document object layout
 

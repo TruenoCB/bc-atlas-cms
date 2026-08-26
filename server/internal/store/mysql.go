@@ -79,6 +79,34 @@ func (repository *MySQLRepository) CreateMediaObject(ctx context.Context, object
 }
 
 func (repository *MySQLRepository) ListMediaObjects(ctx context.Context, filter domain.MediaFilter) ([]domain.MediaObject, error) {
+	where, args := mediaObjectFilter(filter)
+	limit := filter.Limit
+	if limit <= 0 || limit > 100 {
+		limit = 100
+	}
+	offset := filter.Offset
+	if offset < 0 {
+		offset = 0
+	}
+	args = append(args, limit, offset)
+	rows, err := repository.db.QueryContext(ctx, `SELECT id, object_key, bucket_name, original_name, content_type, size_bytes, created_at
+      FROM media_objects WHERE `+strings.Join(where, " AND ")+` ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []domain.MediaObject{}
+	for rows.Next() {
+		var item domain.MediaObject
+		if err := rows.Scan(&item.ID, &item.ObjectKey, &item.BucketName, &item.OriginalName, &item.ContentType, &item.SizeBytes, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func mediaObjectFilter(filter domain.MediaFilter) ([]string, []any) {
 	where := []string{"1 = 1"}
 	args := []any{}
 	query := strings.TrimSpace(filter.Query)
@@ -94,26 +122,42 @@ func (repository *MySQLRepository) ListMediaObjects(ctx context.Context, filter 
 	case "document":
 		where = append(where, "content_type NOT LIKE 'image/%' AND content_type NOT LIKE 'video/%' AND content_type NOT LIKE 'audio/%'")
 	}
-	limit := filter.Limit
-	if limit <= 0 || limit > 250 {
-		limit = 250
+	return where, args
+}
+
+func (repository *MySQLRepository) CountMediaObjects(ctx context.Context, filter domain.MediaFilter) (int, error) {
+	where, args := mediaObjectFilter(filter)
+	var total int
+	err := repository.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM media_objects WHERE `+strings.Join(where, " AND "), args...).Scan(&total)
+	return total, err
+}
+
+func (repository *MySQLRepository) FindMediaObject(ctx context.Context, id string) (domain.MediaObject, error) {
+	var item domain.MediaObject
+	err := repository.db.QueryRowContext(ctx, `SELECT id, object_key, bucket_name, original_name, content_type, size_bytes, created_at
+      FROM media_objects WHERE id = ?`, id).Scan(&item.ID, &item.ObjectKey, &item.BucketName, &item.OriginalName, &item.ContentType, &item.SizeBytes, &item.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.MediaObject{}, ErrNotFound
 	}
-	args = append(args, limit)
-	rows, err := repository.db.QueryContext(ctx, `SELECT id, object_key, bucket_name, original_name, content_type, size_bytes, created_at
-      FROM media_objects WHERE `+strings.Join(where, " AND ")+` ORDER BY created_at DESC LIMIT ?`, args...)
 	if err != nil {
-		return nil, err
+		return domain.MediaObject{}, err
 	}
-	defer rows.Close()
-	items := []domain.MediaObject{}
-	for rows.Next() {
-		var item domain.MediaObject
-		if err := rows.Scan(&item.ID, &item.ObjectKey, &item.BucketName, &item.OriginalName, &item.ContentType, &item.SizeBytes, &item.CreatedAt); err != nil {
-			return nil, err
-		}
-		items = append(items, item)
+	return item, nil
+}
+
+func (repository *MySQLRepository) DeleteMediaObject(ctx context.Context, id string) error {
+	result, err := repository.db.ExecContext(ctx, `DELETE FROM media_objects WHERE id = ?`, id)
+	if err != nil {
+		return err
 	}
-	return items, rows.Err()
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (repository *MySQLRepository) Migrate(ctx context.Context) error {

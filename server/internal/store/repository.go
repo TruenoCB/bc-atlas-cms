@@ -25,6 +25,9 @@ type Repository interface {
 	ListComments(context.Context, string) ([]domain.Comment, error)
 	CreateMediaObject(context.Context, domain.MediaObject) error
 	ListMediaObjects(context.Context, domain.MediaFilter) ([]domain.MediaObject, error)
+	CountMediaObjects(context.Context, domain.MediaFilter) (int, error)
+	FindMediaObject(context.Context, string) (domain.MediaObject, error)
+	DeleteMediaObject(context.Context, string) error
 	ListKnowledgeBases(context.Context) ([]domain.KnowledgeBase, error)
 	FindKnowledgeBase(context.Context, string) (domain.KnowledgeBase, error)
 	CreateKnowledgeBase(context.Context, domain.KnowledgeBaseInput) (domain.KnowledgeBase, error)

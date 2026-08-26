@@ -54,13 +54,48 @@ func (repository *MemoryRepository) ListMediaObjects(_ context.Context, filter d
 	items = filterMediaObjects(items, query, filter.Kind)
 	sort.Slice(items, func(left, right int) bool { return items[left].CreatedAt.After(items[right].CreatedAt) })
 	limit := filter.Limit
-	if limit <= 0 || limit > 250 {
-		limit = 250
+	if limit <= 0 || limit > 100 {
+		limit = 100
 	}
-	if len(items) > limit {
-		items = items[:limit]
+	offset := filter.Offset
+	if offset < 0 {
+		offset = 0
 	}
-	return items, nil
+	if offset >= len(items) {
+		return []domain.MediaObject{}, nil
+	}
+	end := min(offset+limit, len(items))
+	return items[offset:end], nil
+}
+
+func (repository *MemoryRepository) CountMediaObjects(_ context.Context, filter domain.MediaFilter) (int, error) {
+	repository.mu.RLock()
+	items := append([]domain.MediaObject(nil), repository.mediaObjects...)
+	repository.mu.RUnlock()
+	return len(filterMediaObjects(items, strings.ToLower(strings.TrimSpace(filter.Query)), filter.Kind)), nil
+}
+
+func (repository *MemoryRepository) FindMediaObject(_ context.Context, id string) (domain.MediaObject, error) {
+	repository.mu.RLock()
+	defer repository.mu.RUnlock()
+	for _, item := range repository.mediaObjects {
+		if item.ID == id {
+			return item, nil
+		}
+	}
+	return domain.MediaObject{}, ErrNotFound
+}
+
+func (repository *MemoryRepository) DeleteMediaObject(_ context.Context, id string) error {
+	repository.mu.Lock()
+	defer repository.mu.Unlock()
+	for index, item := range repository.mediaObjects {
+		if item.ID == id {
+			repository.mediaObjects = append(repository.mediaObjects[:index], repository.mediaObjects[index+1:]...)
+			return nil
+		}
+	}
+	return ErrNotFound
 }
 
 func filterMediaObjects(items []domain.MediaObject, query, kind string) []domain.MediaObject {

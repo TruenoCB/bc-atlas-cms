@@ -33,7 +33,9 @@ import { CardSwap, SwapCard } from "./CardSwap.jsx";
 import { resolveMarkdownCover } from "../lib/contentMedia.js";
 import { MarkdownContent } from "./MarkdownContent.jsx";
 import { FullscreenMarkdownEditor } from "./FullscreenMarkdownEditor.jsx";
+import { Pagination } from "./Pagination.jsx";
 import { extractMarkdownToc } from "../lib/markdownHeadings.js";
+import { paginateItems } from "../lib/pagination.js";
 
 const initialPageEditor = {
   parentId: "",
@@ -151,6 +153,7 @@ export function KnowledgeHub({ user, onRequireAuth, initialBaseSlug = "", initia
   const [openNodes, setOpenNodes] = useState(new Set());
   const [catalogQuery, setCatalogQuery] = useState("");
   const [catalogActiveIndex, setCatalogActiveIndex] = useState(0);
+  const [catalogPage, setCatalogPage] = useState(1);
   const [query, setQuery] = useState("");
   const [pageEditorOpen, setPageEditorOpen] = useState(false);
   const [pageEditorMode, setPageEditorMode] = useState("create");
@@ -231,7 +234,9 @@ export function KnowledgeHub({ user, onRequireAuth, initialBaseSlug = "", initia
     if (!value) return bases;
     return bases.filter((base) => `${base.title} ${base.description ?? ""}`.toLowerCase().includes(value));
   }, [bases, catalogQuery]);
-  const filteredBaseKey = filteredBases.map((base) => base.slug).join("|");
+  const catalogPagination = useMemo(() => paginateItems(filteredBases, catalogPage), [catalogPage, filteredBases]);
+  const catalogBases = catalogPagination.items;
+  const filteredBaseKey = catalogBases.map((base) => base.slug).join("|");
   const filteredPages = useMemo(() => {
     if (!query.trim()) return pages;
     const value = query.toLowerCase();
@@ -243,6 +248,10 @@ export function KnowledgeHub({ user, onRequireAuth, initialBaseSlug = "", initia
   useEffect(() => {
     setCatalogActiveIndex(0);
   }, [filteredBaseKey]);
+
+  useEffect(() => {
+    setCatalogPage(1);
+  }, [catalogQuery]);
 
   useEffect(() => {
     const container = catalogListRef.current;
@@ -432,9 +441,10 @@ export function KnowledgeHub({ user, onRequireAuth, initialBaseSlug = "", initia
         <div className="knowledge-catalog-toolbar"><div className="eyebrow">KNOWLEDGE / LIBRARIES</div>{canPublish ? <PrimarySpecularButton size="sm" onClick={() => openBaseEditor()}><Plus size={14} />New knowledge base</PrimarySpecularButton> : null}</div>
         <label className="knowledge-catalog-search specular-search"><MagnifyingGlass size={16} /><input aria-label="Search knowledge bases" value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} placeholder="Search knowledge bases" /><span>{filteredBases.length} / {bases.length}</span></label>
         <div className="knowledge-catalog-browser">
-          <aside className="knowledge-catalog-index" aria-label="Knowledge base index"><header><div><span>LIBRARY INDEX</span><strong>{String(filteredBases.length).padStart(2, "0")}</strong></div><small>FOCUS FOLLOWS THE STACK</small></header><div className="knowledge-catalog-index-list" ref={catalogListRef} role="listbox" aria-label="Select a knowledge base">{filteredBases.map((base, index) => <button key={base.id} ref={(node) => { catalogItemRefs.current[index] = node; }} className={catalogActiveIndex === index ? "active" : ""} type="button" role="option" aria-selected={catalogActiveIndex === index} onClick={() => setCatalogActiveIndex(index)}><span>{String(index + 1).padStart(2, "0")}</span><span><strong>{base.title}</strong><small>{base.visibility.toUpperCase()} COLLECTION</small></span><CaretRight size={13} aria-hidden="true" /></button>)}{!filteredBases.length ? <p>No matching libraries.</p> : null}</div><footer aria-hidden="true"><span>{filteredBases.length ? String(catalogActiveIndex + 1).padStart(2, "0") : "00"}</span><span className="knowledge-catalog-index-progress"><span style={{ width: `${filteredBases.length ? ((catalogActiveIndex + 1) / filteredBases.length) * 100 : 0}%` }} /></span><span>{String(filteredBases.length).padStart(2, "0")}</span></footer></aside>
-          <section className="knowledge-swap-stage" aria-label="Knowledge base catalog">{filteredBases.length ? <CardSwap key={filteredBaseKey} width="min(72vw, 680px)" height="min(58vh, 490px)" cardDistance={42} verticalDistance={38} activeIndex={catalogActiveIndex} onActiveChange={setCatalogActiveIndex} onCardClick={(index) => openBase(filteredBases[index])}>{filteredBases.map((base, index) => { const coverUrl = base.coverUrl || baseAutoCovers[base.slug]; return <SwapCard className="knowledge-base-card" key={base.id} role="button" tabIndex="0" aria-label={`Open ${base.title}`} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") openBase(base); }}><div className={`knowledge-base-card-visual${coverUrl ? " has-cover" : ""}`} aria-hidden="true"><span className="knowledge-base-card-index">{String(index + 1).padStart(2, "0")}</span>{coverUrl ? <img src={coverUrl} alt="" loading="lazy" /> : <Books size={54} weight="thin" />}<i /><i /><i /></div><div className="knowledge-base-card-copy"><div className="eyebrow">{base.visibility.toUpperCase()} COLLECTION</div><h2>{base.title}</h2><p>{base.description || "A growing collection of connected documents."}</p><span>Explore knowledge base <ArrowRight size={15} /></span></div></SwapCard>; })}</CardSwap> : <div className="knowledge-catalog-no-results">No knowledge bases match “{catalogQuery.trim()}”.</div>}</section>
+          <aside className="knowledge-catalog-index" aria-label="Knowledge base index"><header><div><span>LIBRARY INDEX</span><strong>{String(filteredBases.length).padStart(2, "0")}</strong></div><small>FOCUS FOLLOWS THE STACK</small></header><div className="knowledge-catalog-index-list" ref={catalogListRef} role="listbox" aria-label="Select a knowledge base">{catalogBases.map((base, index) => <button key={base.id} ref={(node) => { catalogItemRefs.current[index] = node; }} className={catalogActiveIndex === index ? "active" : ""} type="button" role="option" aria-selected={catalogActiveIndex === index} onClick={() => setCatalogActiveIndex(index)}><span>{String((catalogPagination.page - 1) * catalogPagination.pageSize + index + 1).padStart(2, "0")}</span><span><strong>{base.title}</strong><small>{base.visibility.toUpperCase()} COLLECTION</small></span><CaretRight size={13} aria-hidden="true" /></button>)}{!filteredBases.length ? <p>No matching libraries.</p> : null}</div><footer aria-hidden="true"><span>{catalogBases.length ? String(catalogActiveIndex + 1).padStart(2, "0") : "00"}</span><span className="knowledge-catalog-index-progress"><span style={{ width: `${catalogBases.length ? ((catalogActiveIndex + 1) / catalogBases.length) * 100 : 0}%` }} /></span><span>{String(catalogBases.length).padStart(2, "0")}</span></footer></aside>
+          <section className="knowledge-swap-stage" aria-label="Knowledge base catalog">{catalogBases.length ? <CardSwap key={filteredBaseKey} width="min(72vw, 680px)" height="min(58vh, 490px)" cardDistance={42} verticalDistance={38} activeIndex={catalogActiveIndex} onActiveChange={setCatalogActiveIndex} onCardClick={(index) => openBase(catalogBases[index])}>{catalogBases.map((base, index) => { const coverUrl = base.coverUrl || baseAutoCovers[base.slug]; return <SwapCard className="knowledge-base-card" key={base.id} role="button" tabIndex="0" aria-label={`Open ${base.title}`} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") openBase(base); }}><div className={`knowledge-base-card-visual${coverUrl ? " has-cover" : ""}`} aria-hidden="true"><span className="knowledge-base-card-index">{String((catalogPagination.page - 1) * catalogPagination.pageSize + index + 1).padStart(2, "0")}</span>{coverUrl ? <img src={coverUrl} alt="" loading="lazy" /> : <Books size={54} weight="thin" />}<i /><i /><i /></div><div className="knowledge-base-card-copy"><div className="eyebrow">{base.visibility.toUpperCase()} COLLECTION</div><h2>{base.title}</h2><p>{base.description || "A growing collection of connected documents."}</p><span>Explore knowledge base <ArrowRight size={15} /></span></div></SwapCard>; })}</CardSwap> : <div className="knowledge-catalog-no-results">No knowledge bases match “{catalogQuery.trim()}”.</div>}</section>
         </div>
+        {filteredBases.length ? <Pagination page={catalogPagination.page} totalPages={catalogPagination.totalPages} onPageChange={setCatalogPage} /> : null}
         {!bases.length && !error ? <div className="knowledge-catalog-empty">No knowledge bases have been published yet.</div> : null}
         <KnowledgeBaseEditorDialog open={baseEditorOpen} mode={baseEditorMode} value={baseEditor} saving={saving} onChange={setBaseEditor} onClose={() => setBaseEditorOpen(false)} onSubmit={saveBase} onCoverUpload={attachBaseCover} onDelete={removeBase} />
         {error ? <div className="toast" role="status">{error}</div> : null}

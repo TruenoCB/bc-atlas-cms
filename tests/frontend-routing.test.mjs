@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { extractMarkdownToc } from "../src/lib/markdownHeadings.js";
+import { paginateItems } from "../src/lib/pagination.js";
 import { parseAppRoute, routeForContent, routeForKnowledge } from "../src/lib/routes.js";
 
 test("content slugs map to stable public routes", () => {
@@ -25,4 +26,15 @@ test("headings inside fenced code are excluded", () => {
     { depth: 2, title: "Visible", id: "visible" },
     { depth: 4, title: "Detail", id: "detail" },
   ]);
+});
+
+test("pagination keeps stable 100-item pages and clamps invalid boundaries", () => {
+  const source = Array.from({ length: 205 }, (_, index) => index + 1);
+  assert.deepEqual(paginateItems(source, 1).items, source.slice(0, 100));
+  assert.deepEqual(paginateItems(source, 2).items, source.slice(100, 200));
+  assert.deepEqual(paginateItems(source, 3), {
+    items: source.slice(200), page: 3, pageSize: 100, total: 205, totalPages: 3,
+  });
+  assert.equal(paginateItems(source, 99).page, 3);
+  assert.equal(paginateItems(source, 0).page, 1);
 });

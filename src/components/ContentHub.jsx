@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUpRight,
   FileText,
@@ -12,7 +12,9 @@ import {
 } from "@phosphor-icons/react";
 import SpecularButton, { PrimarySpecularButton } from "./SpecularButton.jsx";
 import { AnimatedList } from "./AnimatedList.jsx";
+import { Pagination } from "./Pagination.jsx";
 import { meaningfulContentTags, resolveContentCover } from "../lib/contentMedia.js";
+import { paginateItems } from "../lib/pagination.js";
 
 const specularControlProps = {
   size: "sm",
@@ -72,10 +74,15 @@ export function ContentHub({ section, contents, knowledgeBases = [], knowledgePa
   const [query, setQuery] = useState("");
   const [selectedTag, setSelectedTag] = useState("all");
   const [workspaceStatus, setWorkspaceStatus] = useState("all");
+  const [page, setPage] = useState(1);
+  const hubRef = useRef(null);
   useEffect(() => {
     setQuery("");
     setSelectedTag("all");
   }, [section]);
+  useEffect(() => {
+    setPage(1);
+  }, [query, section, selectedTag, workspaceStatus]);
   const sectionItems = useMemo(() => contents
     .filter((item) => section === "Workspace" || item.status === "published")
     .filter((item) => belongsToSection(item, section))
@@ -88,7 +95,12 @@ export function ContentHub({ section, contents, knowledgeBases = [], knowledgePa
   const items = useMemo(() => sectionItems
     .filter((item) => selectedTag === "all" || item.tags?.some((tag) => tag.slug === selectedTag))
     .filter((item) => `${item.title} ${item.summary} ${item.bodyMarkdown ?? ""} ${item.tags?.map((tag) => `${tag.slug} ${tag.name}`).join(" ")}`.toLowerCase().includes(query.trim().toLowerCase())), [query, sectionItems, selectedTag]);
-  const archive = useMemo(() => archiveByDate(items), [items]);
+  const contentPage = useMemo(() => paginateItems(items, page), [items, page]);
+  const archive = useMemo(() => archiveByDate(contentPage.items), [contentPage.items]);
+  const changePage = (nextPage) => {
+    setPage(nextPage);
+    window.requestAnimationFrame(() => hubRef.current?.scrollTo({ top: 0, behavior: "smooth" }));
+  };
 
   if (section === "Workspace") {
     const unifiedKnowledgeEntries = contents.filter((item) => item.type === "knowledge_base" || item.type === "knowledge_page").map((item) => ({
@@ -142,8 +154,9 @@ export function ContentHub({ section, contents, knowledgeBases = [], knowledgePa
       .filter((item) => workspaceStatus === "all" || item.status === workspaceStatus)
       .filter((item) => `${item.type} ${item.title} ${item.summary} ${item.slug} ${item.knowledgeBaseTitle ?? ""}`.toLowerCase().includes(query.trim().toLowerCase()))
       .sort((left, right) => new Date(right.updatedAt || right.publishedAt || 0) - new Date(left.updatedAt || left.publishedAt || 0));
+    const workspacePage = paginateItems(workspaceItems, page);
     return (
-      <section className="content-hub workspace-hub">
+      <section className="content-hub workspace-hub" ref={hubRef}>
         <div className="hub-heading workspace-heading">
           <div><div className="eyebrow">OWNER WORKSPACE</div><h1>Publishing control,<br />without dashboard noise.</h1></div>
           {canPublish ? <div className="workspace-heading-actions">
@@ -164,7 +177,7 @@ export function ContentHub({ section, contents, knowledgeBases = [], knowledgePa
         </div>
         <div className="workspace-list">
           <div className="workspace-row workspace-labels"><span>TYPE / TITLE</span><span>VISIBILITY</span><span>STATUS</span><span>UPDATED</span><span>ACTIONS</span></div>
-          {workspaceItems.map((item) => {
+          {workspacePage.items.map((item) => {
             const isKnowledge = Boolean(item.workspaceKind);
             const manageable = isKnowledge ? canManage(item) : canManage(item);
             const preview = () => isKnowledge ? onOpenKnowledge?.(item, false) : onSelect(item);
@@ -196,6 +209,7 @@ export function ContentHub({ section, contents, knowledgeBases = [], knowledgePa
           );})}
           {!workspaceItems.length ? <div className="workspace-empty">No content matches this view.</div> : null}
         </div>
+        {workspaceItems.length ? <Pagination page={workspacePage.page} totalPages={workspacePage.totalPages} onPageChange={changePage} /> : null}
       </section>
     );
   }
@@ -203,7 +217,7 @@ export function ContentHub({ section, contents, knowledgeBases = [], knowledgePa
   const icon = section === "Thoughts" ? <Quotes /> : section === "Gallery" ? <ImageSquare /> : section === "Field Notes" ? <MapPin /> : <FileText />;
 
   return (
-    <section className={`content-hub content-archive-hub${section === "Gallery" ? " gallery-hub" : ""}`}>
+    <section className={`content-hub content-archive-hub${section === "Gallery" ? " gallery-hub" : ""}`} ref={hubRef}>
       <div className="hub-tools archive-tools">
         <label className="specular-search"><MagnifyingGlass size={16} /><input aria-label={`Search ${section}`} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${section.toLowerCase()}`} /></label>
         {section === "Essays" ? (
@@ -245,11 +259,11 @@ export function ContentHub({ section, contents, knowledgeBases = [], knowledgePa
 
       {section === "Gallery" ? (
         <div className="gallery-grid">
-          {items.map((item, index) => {
+          {contentPage.items.map((item, index) => {
             const cover = resolveContentCover(item);
             return (
             <button key={item.id} className="gallery-card" type="button" onClick={() => onSelect(item)}>
-              <div className={`gallery-visual${cover ? " has-cover" : ""}`} aria-hidden="true"><span>{String(index + 1).padStart(2, "0")}</span>{cover ? <img src={cover.url} alt="" loading="lazy" /> : icon}</div>
+              <div className={`gallery-visual${cover ? " has-cover" : ""}`} aria-hidden="true"><span>{String((contentPage.page - 1) * contentPage.pageSize + index + 1).padStart(2, "0")}</span>{cover ? <img src={cover.url} alt="" loading="lazy" /> : icon}</div>
               <div><small>{dateLabel(item.publishedAt)} · {item.tags?.find((tag) => tag.slug === "media")?.properties?.kind ?? "MEDIA"}</small><h2>{item.title}</h2><p>{item.summary}</p></div>
             </button>
           );})}
@@ -286,6 +300,7 @@ export function ContentHub({ section, contents, knowledgeBases = [], knowledgePa
         </div>
       )}
       {!items.length ? <div className="empty-module">No published {section.toLowerCase()} match this view yet.</div> : null}
+      {items.length ? <Pagination page={contentPage.page} totalPages={contentPage.totalPages} onPageChange={changePage} /> : null}
     </section>
   );
 }

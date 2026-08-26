@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"mime/multipart"
@@ -369,11 +370,49 @@ func TestMediaUploadPersistsAndSupportsRangeRequests(t *testing.T) {
 		t.Fatalf("media library status = %d, body = %s", libraryResponse.Code, libraryResponse.Body.String())
 	}
 	var library struct {
-		Items []domain.MediaObject `json:"items"`
+		Items      []domain.MediaObject `json:"items"`
+		Pagination struct {
+			Page       int `json:"page"`
+			PageSize   int `json:"pageSize"`
+			Total      int `json:"total"`
+			TotalPages int `json:"totalPages"`
+		} `json:"pagination"`
 	}
 	decodeResponse(t, libraryResponse, &library)
 	if len(library.Items) != 1 || library.Items[0].URL != uploaded.URL || library.Items[0].OriginalName != "cover.png" {
 		t.Fatalf("unexpected media library items: %#v", library.Items)
+	}
+	if library.Pagination.Page != 1 || library.Pagination.PageSize != 100 || library.Pagination.Total != 1 || library.Pagination.TotalPages != 1 {
+		t.Fatalf("unexpected media pagination: %#v", library.Pagination)
+	}
+
+	for index := 0; index < 100; index++ {
+		if err := repository.CreateMediaObject(context.Background(), domain.MediaObject{
+			ID: fmt.Sprintf("media-%03d", index), ObjectKey: fmt.Sprintf("archive/media-%03d.png", index), BucketName: "test",
+			OriginalName: fmt.Sprintf("archive-%03d.png", index), ContentType: "image/png", SizeBytes: 10,
+			CreatedAt: time.Date(2025, 1, 1, 0, 0, index, 0, time.UTC),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	secondPageRequest := httptest.NewRequest(http.MethodGet, "/api/media?page=2", nil)
+	secondPageRequest.AddCookie(cookie)
+	secondPageResponse := httptest.NewRecorder()
+	handler.ServeHTTP(secondPageResponse, secondPageRequest)
+	if secondPageResponse.Code != http.StatusOK {
+		t.Fatalf("media second page status = %d, body = %s", secondPageResponse.Code, secondPageResponse.Body.String())
+	}
+	var secondPage struct {
+		Items      []domain.MediaObject `json:"items"`
+		Pagination struct {
+			Page       int `json:"page"`
+			Total      int `json:"total"`
+			TotalPages int `json:"totalPages"`
+		} `json:"pagination"`
+	}
+	decodeResponse(t, secondPageResponse, &secondPage)
+	if len(secondPage.Items) != 1 || secondPage.Pagination.Page != 2 || secondPage.Pagination.Total != 101 || secondPage.Pagination.TotalPages != 2 {
+		t.Fatalf("unexpected second media page: items=%d pagination=%#v", len(secondPage.Items), secondPage.Pagination)
 	}
 
 	guestLibrary := httptest.NewRecorder()
@@ -391,6 +430,27 @@ func TestMediaUploadPersistsAndSupportsRangeRequests(t *testing.T) {
 	}
 	if got := readResponse.Body.Bytes(); !bytes.Equal(got, png[:4]) {
 		t.Fatalf("range body = %v, want %v", got, png[:4])
+	}
+
+	guestDelete := httptest.NewRecorder()
+	handler.ServeHTTP(guestDelete, httptest.NewRequest(http.MethodDelete, "/api/media/test-media-id", nil))
+	if guestDelete.Code != http.StatusUnauthorized {
+		t.Fatalf("guest media delete status = %d, want %d", guestDelete.Code, http.StatusUnauthorized)
+	}
+	deleteRequest := httptest.NewRequest(http.MethodDelete, "/api/media/test-media-id", nil)
+	deleteRequest.AddCookie(cookie)
+	deleteResponse := httptest.NewRecorder()
+	handler.ServeHTTP(deleteResponse, deleteRequest)
+	if deleteResponse.Code != http.StatusNoContent {
+		t.Fatalf("media delete status = %d, body = %s", deleteResponse.Code, deleteResponse.Body.String())
+	}
+	deletedRead := httptest.NewRecorder()
+	handler.ServeHTTP(deletedRead, httptest.NewRequest(http.MethodGet, uploaded.URL, nil))
+	if deletedRead.Code != http.StatusNotFound {
+		t.Fatalf("deleted media read status = %d, want %d", deletedRead.Code, http.StatusNotFound)
+	}
+	if _, err := repository.FindMediaObject(context.Background(), "test-media-id"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("deleted media index error = %v, want not found", err)
 	}
 }
 
