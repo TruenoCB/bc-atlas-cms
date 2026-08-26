@@ -3,10 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
-
-function headingSlug(value) {
-  return String(value).toLowerCase().trim().replace(/[`*_]/g, "").replace(/[^a-z0-9\s-]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-") || "section";
-}
+import { uniqueMarkdownHeadingId } from "../lib/markdownHeadings.js";
 
 function safeHtmlDocument(source) {
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src https: data: blob:; media-src https: data: blob:; connect-src 'none'; frame-src 'none'; object-src 'none'"><style>html{color-scheme:dark}body{margin:0;padding:18px;background:#0d0e12;color:#d8d4dc;font:14px/1.6 Inter,system-ui,sans-serif}button{border:1px solid #6f4ba1;background:#15131c;color:#c69cff;padding:8px 12px;cursor:pointer}a{color:#b780ff}</style></head><body>${source}</body></html>`;
@@ -55,10 +52,11 @@ function resolveEmbedURL(value) {
 }
 
 export function MarkdownContent({ body = "", className = "markdown-body", allowHtmlSandbox = true }) {
+  const headingCounts = new Map();
   const heading = (level) => function Heading({ children, ...props }) {
-    const text = Children.toArray(children).join("");
+    const text = Children.toArray(children).map((child) => typeof child === "string" || typeof child === "number" ? String(child) : child?.props?.children ?? "").join("");
     const Tag = `h${level}`;
-    return <Tag id={headingSlug(text)} {...props}>{children}</Tag>;
+    return <Tag id={uniqueMarkdownHeadingId(text, headingCounts)} {...props}>{children}</Tag>;
   };
 
   return (
@@ -67,8 +65,10 @@ export function MarkdownContent({ body = "", className = "markdown-body", allowH
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
         components={{
+          h1: heading(1),
           h2: heading(2),
           h3: heading(3),
+          h4: heading(4),
           a({ href = "", title, children, ...props }) {
             const label = Children.toArray(children).join("").trim();
             if (videoFileURL(href)) {

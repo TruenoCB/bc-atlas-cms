@@ -27,6 +27,7 @@ import {
   updateKnowledgePage,
 } from "./lib/api.js";
 import { publicModules } from "./modules/registry.js";
+import { parseAppRoute, routeForContent, routeForKnowledge, routeForView, viewForContent } from "./lib/routes.js";
 
 const PublishFootprintDialog = lazy(() => import("./components/PublishFootprintDialog.jsx").then((module) => ({ default: module.PublishFootprintDialog })));
 const ArticleReader = lazy(() => import("./components/ArticleReader.jsx").then((module) => ({ default: module.ArticleReader })));
@@ -44,22 +45,29 @@ function latestPublished(items, predicate) {
     .sort((left, right) => publicationTimestamp(right) - publicationTimestamp(left))[0] ?? null;
 }
 
+function syncBrowserRoute(path, { replace = false } = {}) {
+  if (window.location.pathname === path) return;
+  window.history[replace ? "replaceState" : "pushState"]({}, "", path);
+}
+
 export function App() {
+  const initialRoute = useMemo(() => parseAppRoute(window.location.pathname), []);
   const [footprints, setFootprints] = useState([]);
   const [contents, setContents] = useState([]);
   const [knowledgeBases, setKnowledgeBases] = useState([]);
   const [knowledgePages, setKnowledgePages] = useState([]);
-  const [view, setView] = useState("Home");
+  const [view, setView] = useState(initialRoute.view);
   const [publisherOpen, setPublisherOpen] = useState(false);
   const [composerContext, setComposerContext] = useState({ mode: "create", sourceSlug: "", initialValue: null });
   const [readerArticle, setReaderArticle] = useState(null);
+  const [readerOriginView, setReaderOriginView] = useState(initialRoute.view);
   const [signInOpen, setSignInOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const [user, setUser] = useState(null);
   const [authReason, setAuthReason] = useState("");
   const [pendingArticleSlug, setPendingArticleSlug] = useState("");
   const [editorialCollapsed, setEditorialCollapsed] = useState(false);
-  const [knowledgeTarget, setKnowledgeTarget] = useState({ baseSlug: "", pageSlug: "", startEditing: false });
+  const [knowledgeTarget, setKnowledgeTarget] = useState({ baseSlug: initialRoute.baseSlug, pageSlug: initialRoute.pageSlug, startEditing: false });
 
   const refreshKnowledgeWorkspace = async () => {
     const bases = await listKnowledgeBases();
@@ -142,7 +150,9 @@ export function App() {
       ? await updateContent(composerContext.sourceSlug, payload)
       : await createContent(payload);
     mergeSavedContent(saved);
+    setReaderOriginView(view);
     setReaderArticle(saved);
+    syncBrowserRoute(routeForContent(saved), { replace: composerContext.mode === "edit" });
     setNotice(composerContext.mode === "edit" ? "Changes saved" : input.status === "draft" ? "Draft saved" : "Content published");
   };
 
@@ -152,8 +162,12 @@ export function App() {
     setSignInOpen(true);
   };
 
-  const openArticle = async (article) => {
+  const openArticle = async (article, { syncRoute = true, originView = view } = {}) => {
     if (!article) return;
+    if (syncRoute) {
+      setReaderOriginView(originView);
+      syncBrowserRoute(routeForContent(article));
+    }
     if (article.locked) {
       requireAuth("Sign in to unlock this member-only field note.", article.slug);
       return;
@@ -169,6 +183,29 @@ export function App() {
       else setNotice(error instanceof Error ? error.message : "The article could not be opened.");
     }
   };
+
+  useEffect(() => {
+    const applyRoute = () => {
+      const route = parseAppRoute(window.location.pathname);
+      setView(route.view);
+      setKnowledgeTarget({ baseSlug: route.baseSlug, pageSlug: route.pageSlug, startEditing: false });
+      if (!route.contentSlug) {
+        setReaderArticle(null);
+        return;
+      }
+      const article = contents.find((item) => item.slug === route.contentSlug);
+      if (article) void openArticle(article, { syncRoute: false, originView: route.view });
+    };
+    window.addEventListener("popstate", applyRoute);
+    return () => window.removeEventListener("popstate", applyRoute);
+  }, [contents]);
+
+  useEffect(() => {
+    const route = parseAppRoute(window.location.pathname);
+    if (!route.contentSlug || !contents.length || readerArticle?.slug === route.contentSlug) return;
+    const article = contents.find((item) => item.slug === route.contentSlug);
+    if (article) void openArticle(article, { syncRoute: false, originView: route.view });
+  }, [contents]);
 
   const authenticated = async (authenticatedUser) => {
     setUser(authenticatedUser);
@@ -189,6 +226,7 @@ export function App() {
     setUser(null);
     setView("Home");
     setReaderArticle(null);
+    syncBrowserRoute("/", { replace: true });
     await refreshWorkspaceData(null);
     setNotice("Signed out");
   };
@@ -271,6 +309,7 @@ export function App() {
       startEditing: edit && entry.workspaceKind === "knowledge-page",
     });
     setView("Knowledge");
+    syncBrowserRoute(routeForKnowledge(entry.knowledgeBaseSlug, entry.workspaceKind === "knowledge-page" ? entry.slug : ""));
   };
 
   const changeKnowledgePageStatus = async (page, status) => {
@@ -308,6 +347,16 @@ export function App() {
 
   const navigate = (item) => {
     setView(item);
+    setReaderArticle(null);
+    if (item !== "Knowledge") setKnowledgeTarget({ baseSlug: "", pageSlug: "", startEditing: false });
+    syncBrowserRoute(routeForView(item));
+  };
+
+  const closeArticle = () => {
+    setReaderArticle(null);
+    const returnView = readerOriginView === "Home" ? "Home" : viewForContent(readerArticle);
+    setView(returnView);
+    syncBrowserRoute(routeForView(returnView));
   };
 
   const featuredEssay = latestPublished(contents, (item) => item.type === "article" && !item.tags?.some((tag) => tag.slug === "footprint"));
@@ -336,10 +385,10 @@ export function App() {
         activeView={view}
         onNavigate={navigate}
         accountLabel={user ? user.displayName : "Sign in"}
-        onAccount={() => user ? setView("Workspace") : requireAuth("")}
+        onAccount={() => user ? navigate("Workspace") : requireAuth("")}
       />
       <header className="topbar">
-        <button className="brand" type="button" aria-label="B.C home" onClick={() => setView("Home") }>
+        <button className="brand" type="button" aria-label="B.C home" onClick={() => navigate("Home") }>
           <span className="brand-dot-matrix" aria-hidden="true">B.C</span>
         </button>
         <nav aria-label="Primary navigation">
@@ -349,7 +398,7 @@ export function App() {
         </nav>
         {user ? (
           <div className="account-area">
-            <button className="workspace-trigger" type="button" onClick={() => setView("Workspace")}><LockKey size={13} />{user.displayName}</button>
+            <button className="workspace-trigger" type="button" onClick={() => navigate("Workspace")}><LockKey size={13} />{user.displayName}</button>
             <button type="button" aria-label="Sign out" title="Sign out" onClick={signOut}><SignOut size={17} /></button>
           </div>
         ) : (
@@ -403,9 +452,9 @@ export function App() {
           />
         </section>
       </main> : view === "Knowledge" ? (
-        <Suspense fallback={<div className="module-loading">Loading knowledge…</div>}><KnowledgeHub key={`knowledge-${knowledgeTarget.baseSlug}-${knowledgeTarget.pageSlug}-${knowledgeTarget.startEditing ? "edit" : "read"}`} user={user} onRequireAuth={requireAuth} initialBaseSlug={knowledgeTarget.baseSlug} initialPageSlug={knowledgeTarget.pageSlug} startEditing={knowledgeTarget.startEditing} onWorkspaceChange={() => refreshWorkspaceData()} /></Suspense>
+        <Suspense fallback={<div className="module-loading">Loading knowledge…</div>}><KnowledgeHub key={`knowledge-${knowledgeTarget.baseSlug}-${knowledgeTarget.pageSlug}-${knowledgeTarget.startEditing ? "edit" : "read"}`} user={user} onRequireAuth={requireAuth} initialBaseSlug={knowledgeTarget.baseSlug} initialPageSlug={knowledgeTarget.pageSlug} startEditing={knowledgeTarget.startEditing} onWorkspaceChange={() => refreshWorkspaceData()} onRouteChange={(baseSlug, pageSlug) => syncBrowserRoute(routeForKnowledge(baseSlug, pageSlug))} /></Suspense>
       ) : view === "Media Library" ? (
-        <Suspense fallback={<div className="module-loading">Loading media library…</div>}><MediaLibrary key={view} onBack={() => setView("Workspace")} /></Suspense>
+        <Suspense fallback={<div className="module-loading">Loading media library…</div>}><MediaLibrary key={view} onBack={() => navigate("Workspace")} /></Suspense>
       ) : (
         <ContentHub
           key={view}
@@ -423,8 +472,8 @@ export function App() {
           onEditKnowledge={(entry) => openKnowledge(entry, true)}
           onStatusChangeKnowledge={changeKnowledgePageStatus}
           onDeleteKnowledge={removeKnowledge}
-          onOpenMediaLibrary={() => setView("Media Library")}
-          canManage={(article) => user?.role === "admin" || article.authorId === user?.id}
+          onOpenMediaLibrary={() => navigate("Media Library")}
+          canManage={(article) => Boolean(user && (user.role === "admin" || article.authorId === user.id))}
           canPublish={canPublish}
         />
       )}
@@ -438,7 +487,7 @@ export function App() {
           onClose={() => setPublisherOpen(false)}
           onSubmit={saveContent}
         />
-        <ArticleReader article={readerArticle} onClose={() => setReaderArticle(null)} user={user} footprints={footprints} canEdit={Boolean(readerArticle && (user?.role === "admin" || readerArticle.authorId === user?.id))} onEdit={(article) => { setReaderArticle(null); openPublisher("edit", article); }} />
+        <ArticleReader article={readerArticle} onClose={closeArticle} user={user} footprints={footprints} canEdit={Boolean(user && readerArticle && (user.role === "admin" || readerArticle.authorId === user.id))} onEdit={(article) => { setReaderArticle(null); openPublisher("edit", article); }} />
       </Suspense>
       <AuthDialog open={signInOpen} reason={authReason} onClose={() => setSignInOpen(false)} onAuthenticated={authenticated} />
     </div>

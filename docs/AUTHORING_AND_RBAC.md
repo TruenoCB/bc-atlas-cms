@@ -23,13 +23,30 @@ Search covers type, title, slug, summary, and knowledge-base context. Article re
 - Edit hydrates the original typed tags, cover, media reference, footprint properties, visibility, status, and Markdown, then updates by the original slug.
 - Duplicate copies the source into a new slug and starts as a Draft.
 
-Edit is a side-by-side authoring surface: Markdown source is on the left and the rendered preview is on the right. This applies to both ordinary content and knowledge documents. A content or knowledge preview also includes an Edit action for its author or an administrator, so no return trip to Workspace is required.
+Edit is a side-by-side authoring surface: Markdown source is on the left and the rendered preview is on the right. This applies to both ordinary content and knowledge documents. The compact Composer includes **Full screen**, which opens the shared Markdown workspace used by every body-bearing content type. On desktop it keeps a resource rail, Markdown source, and the public renderer visible at once; on a portrait device the same tools become a horizontal rail and the source/preview panes stack vertically. Image paste and image, video, or arbitrary-file upload remain available there. **Back to details** applies the text to the current draft; the Composer's normal Save action persists it.
+
+A content or knowledge preview also includes an Edit action for its author or an administrator, so no return trip to Workspace is required.
+
+## Shareable slugs and reader routes
+
+`slug` is the stable, URL-safe identifier used by both the API and public reader. Opening an item updates browser history, so the resulting path can be copied, opened in a new tab, refreshed, or sent to another reader:
+
+| Content | Public path |
+| --- | --- |
+| Essay | `/essays/{slug}` |
+| Thought | `/thoughts/{slug}` |
+| Gallery or video | `/gallery/{slug}` |
+| Footprint field note | `/field-notes/{slug}` |
+| Knowledge base | `/knowledge/{baseSlug}` |
+| Knowledge page | `/knowledge/{baseSlug}/{pageSlug}` |
+
+The Go static handler falls back to `index.html` for these paths; React then resolves the slug through the API. `/articles/{slug}` remains accepted as an essay-route alias for existing RSS links. Markdown headings from levels 2–4 receive stable Unicode-aware anchors and feed the desktop table of contents plus a collapsible portrait/mobile table of contents. Repeated headings receive numbered unique anchors.
 
 Knowledge bases are collection records rather than ordinary articles, because their ordered chapter tree needs durable parent/child relations. They are still first-class Workspace rows. The base creator owns its collection; each knowledge page has its own author. Editors manage only the records they authored, while administrators manage all records.
 
 ### Inline images in Markdown
 
-In the Composer's **Write** mode, place the caret where the image should appear
+In the Composer's **Write** mode or the fullscreen Markdown workspace, place the caret where the image should appear
 and either click **Insert image** or paste an image directly from the clipboard.
 The image is uploaded through `POST /api/media`, stored in the private S3 bucket,
 and inserted as ordinary Markdown such as:

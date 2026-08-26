@@ -8,6 +8,7 @@
     "dev:api": "ALLOW_MEMORY_STORE=true go run ./server/cmd/api -addr :8080",
     "build": "vite build && node scripts/prepare-sites-build.mjs",
     "preview": "vite preview",
+    "test:frontend": "node --test tests/frontend-routing.test.mjs",
     "test:sites": "node --test tests/sites-worker.test.mjs"
   },
   "dependencies": {

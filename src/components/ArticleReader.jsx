@@ -6,19 +6,7 @@ import { ParticleText } from "./ParticleText.jsx";
 import { PixelWorldMap } from "./PixelWorldMap.jsx";
 import { PrimarySpecularButton } from "./SpecularButton.jsx";
 import { MarkdownContent } from "./MarkdownContent.jsx";
-
-function headingSlug(value) {
-  return String(value).toLowerCase().trim().replace(/[`*_]/g, "").replace(/[^a-z0-9\s-]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-") || "section";
-}
-
-function extractToc(markdown = "") {
-  return markdown.split("\n").flatMap((line) => {
-    const match = line.match(/^(#{2,3})\s+(.+)$/);
-    if (!match) return [];
-    const title = match[2].replace(/[`*_]/g, "");
-    return [{ depth: match[1].length, title, id: headingSlug(title) }];
-  });
-}
+import { extractMarkdownToc } from "../lib/markdownHeadings.js";
 
 function formatDate(value) {
   if (!value) return "Unscheduled";
@@ -59,7 +47,7 @@ export function ArticleReader({ article, onClose, user, footprints = [], canEdit
   const footprint = article?.tags?.find((tag) => tag.slug === "footprint");
   const isEssay = article?.type === "article" && !footprint;
   const location = footprint?.properties?.location_name;
-  const toc = useMemo(() => extractToc(article?.bodyMarkdown), [article?.bodyMarkdown]);
+  const toc = useMemo(() => extractMarkdownToc(article?.bodyMarkdown), [article?.bodyMarkdown]);
   const visibleTags = meaningfulContentTags(article);
   const cover = resolveContentCover(article);
   const bannerPath = [article?.type === "article" ? "ESSAY" : article?.type?.toUpperCase(), ...visibleTags.slice(0, 2).map((tag) => (tag.name || tag.slug).toUpperCase())]
@@ -153,6 +141,7 @@ export function ArticleReader({ article, onClose, user, footprints = [], canEdit
           <h1 id="reader-title">{article.title}</h1>
           <p className="reader-summary">{article.summary}</p>
           <div className="reader-meta"><span>{article.visibility ?? "public"}</span><span>{visibleTags.map((tag) => `#${tag.slug}`).join("  ")}</span></div>
+          {toc.length ? <details className="compact-markdown-toc"><summary>On this page <span>{String(toc.length).padStart(2, "0")}</span></summary><nav>{toc.map((item) => <a className={`depth-${item.depth}`} key={`compact-${item.id}`} href={`#${item.id}`}>{item.title}</a>)}</nav></details> : null}
           <MarkdownContent body={article.bodyMarkdown} />
           {commentsBlock}
         </article>
@@ -206,9 +195,10 @@ export function ArticleReader({ article, onClose, user, footprints = [], canEdit
         <div className="essay-reading-layout">
           <aside className="essay-toc" aria-label="Article table of contents">
             <span>IN THIS ESSAY</span>
-            {toc.map((item) => <a key={`${item.id}-${item.title}`} className={item.depth === 3 ? "nested" : ""} href={`#${item.id}`}>{item.title}</a>)}
+            {toc.map((item) => <a key={`${item.id}-${item.title}`} className={item.depth > 2 ? "nested" : ""} href={`#${item.id}`}>{item.title}</a>)}
           </aside>
           <main className="essay-content-column">
+            {toc.length ? <details className="mobile-markdown-toc"><summary>In this essay <span>{String(toc.length).padStart(2, "0")}</span></summary><nav>{toc.map((item) => <a className={`depth-${item.depth}`} key={`mobile-${item.id}`} href={`#${item.id}`}>{item.title}</a>)}</nav></details> : null}
             <MarkdownContent body={article.bodyMarkdown} className="markdown-body essay-markdown" />
 
             <section className="essay-field-log" data-reveal>
