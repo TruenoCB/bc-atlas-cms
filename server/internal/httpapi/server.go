@@ -44,6 +44,7 @@ func New(repository store.Repository, mediaStore media.Store, webRoot string, lo
 	mux.HandleFunc("/api/contents/", server.contentBySlug)
 	mux.HandleFunc("/api/schema/tags/footprint", server.footprintSchema)
 	mux.HandleFunc("/api/media", server.uploadMedia)
+	mux.HandleFunc("/api/media/", server.mediaByID)
 	mux.HandleFunc("/media/", server.serveMedia)
 	mux.HandleFunc("/api/knowledge-bases", server.knowledgeBases)
 	mux.HandleFunc("/api/knowledge-bases/", server.knowledgeBaseRoutes)

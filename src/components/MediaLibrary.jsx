@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, FileText, ImageSquare, MagnifyingGlass, UploadSimple } from "@phosphor-icons/react";
-import { listMedia, uploadMedia } from "../lib/api.js";
+import { ArrowLeft, Check, FileText, ImageSquare, MagnifyingGlass, Trash, UploadSimple } from "@phosphor-icons/react";
+import { deleteMedia, listMediaPage, uploadMedia } from "../lib/api.js";
 import { PrimarySpecularButton } from "./SpecularButton.jsx";
+import { Pagination } from "./Pagination.jsx";
 
 const mediaKinds = [
   ["all", "All files"],
@@ -65,21 +66,29 @@ export function MediaLibrary({ onBack }) {
   const [kind, setKind] = useState("all");
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState("");
   const [error, setError] = useState("");
   const [copied, setCopied] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const uploadInputRef = useRef(null);
+  const libraryRef = useRef(null);
 
   const loadMedia = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      setItems(await listMedia({ q: query.trim(), kind: kind === "all" ? "" : kind }));
+      const result = await listMediaPage({ q: query.trim(), kind: kind === "all" ? "" : kind, page });
+      setItems(result.items);
+      setTotal(result.pagination.total);
+      setTotalPages(result.pagination.totalPages);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Media could not be loaded.");
     } finally {
       setLoading(false);
     }
-  }, [kind, query]);
+  }, [kind, page, query]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void loadMedia(); }, query.trim() ? 180 : 0);
@@ -100,7 +109,8 @@ export function MediaLibrary({ onBack }) {
     setError("");
     try {
       for (const file of files) await uploadMedia(file);
-      await loadMedia();
+      if (page === 1) await loadMedia();
+      else setPage(1);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "One or more files could not be uploaded.");
     } finally {
@@ -117,8 +127,28 @@ export function MediaLibrary({ onBack }) {
     }
   };
 
+  const remove = async (item) => {
+    if (!window.confirm(`Delete “${item.originalName}” permanently? Existing Markdown and media links that use this file will stop working.`)) return;
+    setDeleting(item.id);
+    setError("");
+    try {
+      await deleteMedia(item.id);
+      if (items.length === 1 && page > 1) setPage((current) => current - 1);
+      else await loadMedia();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "The file could not be deleted.");
+    } finally {
+      setDeleting("");
+    }
+  };
+
+  const changePage = (nextPage) => {
+    setPage(nextPage);
+    window.requestAnimationFrame(() => libraryRef.current?.scrollTo({ top: 0, behavior: "smooth" }));
+  };
+
   return (
-    <main className="media-library content-hub">
+    <main className="media-library content-hub" ref={libraryRef}>
       <header className="media-library-heading">
         <div>
           <button className="media-library-back" type="button" onClick={onBack}><ArrowLeft size={15} />Back to workspace</button>
@@ -131,11 +161,11 @@ export function MediaLibrary({ onBack }) {
       </header>
 
       <section className="media-library-tools" aria-label="Media library tools">
-        <label className="specular-search"><MagnifyingGlass size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} aria-label="Search media files" placeholder="Search filename, object key, or MIME type" /></label>
+        <label className="specular-search"><MagnifyingGlass size={16} /><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} aria-label="Search media files" placeholder="Search filename, object key, or MIME type" /></label>
         <div className="media-library-filters" role="group" aria-label="Filter media type">
-          {mediaKinds.map(([value, label]) => <button key={value} type="button" className={kind === value ? "active" : ""} onClick={() => setKind(value)} aria-pressed={kind === value}>{label}</button>)}
+          {mediaKinds.map(([value, label]) => <button key={value} type="button" className={kind === value ? "active" : ""} onClick={() => { setKind(value); setPage(1); }} aria-pressed={kind === value}>{label}</button>)}
         </div>
-        <small>{loading ? "Loading library…" : `${items.length} indexed file${items.length === 1 ? "" : "s"}`}</small>
+        <small>{loading ? "Loading library…" : `${total} indexed file${total === 1 ? "" : "s"}`}</small>
       </section>
 
       {error ? <p className="form-error media-library-error" role="alert">{error}</p> : null}
@@ -155,6 +185,7 @@ export function MediaLibrary({ onBack }) {
                   <button type="button" onClick={() => copy(item, "markdown")}>{copied === `${item.id}-markdown` ? <><Check size={13} />Copied</> : "Copy Markdown"}</button>
                   <button type="button" onClick={() => copy(item, "url")}>{copied === `${item.id}-url` ? <><Check size={13} />Copied</> : "Copy link"}</button>
                   <a href={item.url} target="_blank" rel="noreferrer">Open</a>
+                  <button className="media-delete-action" type="button" disabled={deleting === item.id} onClick={() => remove(item)}><Trash size={13} />{deleting === item.id ? "Deleting…" : "Delete"}</button>
                 </div>
                 <span className="media-library-markdown" aria-label="Markdown syntax">{markdown}</span>
               </div>
@@ -163,6 +194,7 @@ export function MediaLibrary({ onBack }) {
         })}
       </section>
       {!loading && !items.length ? <div className="media-library-empty"><ImageSquare size={28} weight="thin" /><p>{query ? "No indexed files match this search." : "No media has been uploaded yet."}</p></div> : null}
+      {!loading && total ? <Pagination page={page} totalPages={totalPages} onPageChange={changePage} /> : null}
     </main>
   );
 }

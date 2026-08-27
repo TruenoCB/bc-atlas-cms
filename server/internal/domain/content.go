@@ -104,9 +104,10 @@ type MediaObject struct {
 }
 
 type MediaFilter struct {
-	Query string
-	Kind  string
-	Limit int
+	Query  string
+	Kind   string
+	Limit  int
+	Offset int
 }
 
 type PropertyDefinition struct {

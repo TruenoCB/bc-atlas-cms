@@ -3190,6 +3190,7 @@ select:focus-visible {
   display: flex;
   align-items: center;
   gap: 4px;
+  flex-wrap: wrap;
   margin: 15px 0 12px;
 }
 
@@ -3203,6 +3204,22 @@ select:focus-visible {
   border-color: rgba(165, 108, 255, .38);
   color: #d7bdfb;
   outline: none;
+}
+
+.media-library-actions .media-delete-action {
+  margin-left: auto;
+  color: #736b79;
+}
+
+.media-library-actions .media-delete-action:hover,
+.media-library-actions .media-delete-action:focus-visible {
+  border-color: rgba(207, 118, 170, .35);
+  color: #d99abc;
+}
+
+.media-library-actions .media-delete-action:disabled {
+  opacity: .4;
+  cursor: default;
 }
 
 .media-library-markdown { color: #a292b3; }
@@ -3221,6 +3238,55 @@ select:focus-visible {
 
 .media-library-empty p { margin: 0; font-size: 13px; }
 .media-library-error { max-width: 1430px; margin: -10px auto 20px; }
+
+.minimal-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  max-width: 1430px;
+  margin: 38px auto 0;
+  color: var(--violet-soft);
+}
+
+.minimal-pagination button,
+.minimal-pagination > span {
+  width: 34px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+}
+
+.minimal-pagination button {
+  padding: 0;
+  border: 1px solid rgba(165, 108, 255, .24);
+  background: rgba(165, 108, 255, .025);
+  color: #b88be9;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease, opacity 160ms ease;
+}
+
+.minimal-pagination button:hover:not(:disabled),
+.minimal-pagination button:focus-visible:not(:disabled) {
+  border-color: rgba(193, 138, 255, .62);
+  background: rgba(165, 108, 255, .09);
+  color: #d7b7ff;
+  outline: none;
+}
+
+.minimal-pagination button:disabled {
+  border-color: rgba(114, 105, 121, .13);
+  background: rgba(17, 17, 21, .18);
+  color: #3f3a43;
+  cursor: default;
+}
+
+.minimal-pagination > span {
+  color: #a97bd7;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .08em;
+}
 
 .markdown-body {
   color: #cbc6d0;

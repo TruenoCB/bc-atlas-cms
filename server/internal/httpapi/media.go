@@ -2,17 +2,22 @@ package httpapi
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"mime"
 	"mime/multipart"
 	"net/http"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/bc-dev/bc-atlas-cms/server/internal/domain"
+	"github.com/bc-dev/bc-atlas-cms/server/internal/store"
 )
+
+const mediaPageSize = 100
 
 func (server *Server) uploadMedia(writer http.ResponseWriter, request *http.Request) {
 	user := server.currentUser(request)
@@ -25,11 +30,27 @@ func (server *Server) uploadMedia(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 	if request.Method == http.MethodGet {
-		items, err := server.repository.ListMediaObjects(request.Context(), domain.MediaFilter{
-			Query: request.URL.Query().Get("q"),
-			Kind:  request.URL.Query().Get("kind"),
-			Limit: 250,
-		})
+		pageNumber := 1
+		if rawPage := request.URL.Query().Get("page"); rawPage != "" {
+			parsed, err := strconv.Atoi(rawPage)
+			if err != nil || parsed < 1 {
+				writeError(writer, http.StatusBadRequest, "page must be a positive integer")
+				return
+			}
+			pageNumber = parsed
+		}
+		filter := domain.MediaFilter{
+			Query:  request.URL.Query().Get("q"),
+			Kind:   request.URL.Query().Get("kind"),
+			Limit:  mediaPageSize,
+			Offset: (pageNumber - 1) * mediaPageSize,
+		}
+		total, err := server.repository.CountMediaObjects(request.Context(), filter)
+		if err != nil {
+			server.internalError(writer, err)
+			return
+		}
+		items, err := server.repository.ListMediaObjects(request.Context(), filter)
 		if err != nil {
 			server.internalError(writer, err)
 			return
@@ -37,7 +58,14 @@ func (server *Server) uploadMedia(writer http.ResponseWriter, request *http.Requ
 		for index := range items {
 			items[index].URL = "/media/" + items[index].ObjectKey
 		}
-		writeJSON(writer, http.StatusOK, map[string]any{"items": items})
+		totalPages := (total + mediaPageSize - 1) / mediaPageSize
+		if totalPages < 1 {
+			totalPages = 1
+		}
+		writeJSON(writer, http.StatusOK, map[string]any{
+			"items":      items,
+			"pagination": map[string]int{"page": pageNumber, "pageSize": mediaPageSize, "total": total, "totalPages": totalPages},
+		})
 		return
 	}
 	if request.Method != http.MethodPost {
@@ -104,6 +132,49 @@ func (server *Server) uploadMedia(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 	writeJSON(writer, http.StatusCreated, object)
+}
+
+func (server *Server) mediaByID(writer http.ResponseWriter, request *http.Request) {
+	user := server.currentUser(request)
+	if user == nil {
+		writeError(writer, http.StatusUnauthorized, "sign in to manage media")
+		return
+	}
+	if !user.CanPublish() {
+		writeError(writer, http.StatusForbidden, "editor access is required")
+		return
+	}
+	if request.Method != http.MethodDelete {
+		methodNotAllowed(writer, http.MethodDelete)
+		return
+	}
+	if server.mediaStore == nil {
+		writeError(writer, http.StatusServiceUnavailable, "S3 storage is not configured")
+		return
+	}
+	id := strings.Trim(strings.TrimPrefix(request.URL.Path, "/api/media/"), "/")
+	if id == "" || strings.Contains(id, "/") {
+		writeError(writer, http.StatusNotFound, "media not found")
+		return
+	}
+	object, err := server.repository.FindMediaObject(request.Context(), id)
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(writer, http.StatusNotFound, "media not found")
+		return
+	}
+	if err != nil {
+		server.internalError(writer, err)
+		return
+	}
+	if err := server.mediaStore.Delete(request.Context(), object.ObjectKey); err != nil {
+		server.internalError(writer, err)
+		return
+	}
+	if err := server.repository.DeleteMediaObject(request.Context(), id); err != nil {
+		server.internalError(writer, err)
+		return
+	}
+	writer.WriteHeader(http.StatusNoContent)
 }
 
 func (server *Server) serveMedia(writer http.ResponseWriter, request *http.Request) {

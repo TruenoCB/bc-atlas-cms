@@ -98,9 +98,20 @@ export async function uploadMedia(file) {
 }
 
 export async function listMedia(filters = {}) {
+  return (await listMediaPage(filters)).items;
+}
+
+export async function listMediaPage(filters = {}) {
   const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
   const payload = await request(`/api/media${query.size ? `?${query}` : ""}`);
-  return payload.items ?? [];
+  return {
+    items: payload.items ?? [],
+    pagination: payload.pagination ?? { page: Number(filters.page) || 1, pageSize: 100, total: payload.items?.length ?? 0, totalPages: 1 },
+  };
+}
+
+export async function deleteMedia(id) {
+  return request(`/api/media/${encodeURIComponent(id)}`, { method: "DELETE", body: "{}" });
 }
 
 export async function createFootprint(input) {

@@ -17,6 +17,11 @@ An editor or administrator opens the account control in the top-right header and
 
 Search covers type, title, slug, summary, and knowledge-base context. Article records, `knowledge base` collections, and `knowledge page` documents appear together in the same Workspace list. Each row exposes Preview; articles also expose Duplicate. The author or an administrator also receives Edit, Publish/Unpublish, Archive, and Delete where that operation applies.
 
+Workspace results, public Essay/Thought/Field Note archives, Gallery cards,
+the knowledge-base catalog, and the Media Library all use the same 100-item
+page size. Search, status, and tag changes return to page 1; the restrained
+`< 1 >` control disables a direction when no adjacent page exists.
+
 `New content`, `Edit`, and `Duplicate` reuse the same Composer:
 
 - Create starts from an empty content model.
@@ -81,12 +86,13 @@ The Workspace header opens **Media library** for editors and administrators.
 It searches the MySQL media-object index by original filename, object key, or
 MIME type; filters Images, Videos, Audio, and other Files; previews browser
 playable media; and copies either the same-origin `/media/...` link or ready-to-
-paste Markdown. It never shows a MinIO endpoint or credentials.
+paste Markdown. Results use the shared 100-item pagination control. It never
+shows a MinIO endpoint or credentials.
 
-Media deletion is intentionally not exposed yet: an object can be referenced
-by multiple Markdown documents, and deleting it without reference tracking
-would create broken articles. A future cleanup feature should first report all
-references and only offer deletion for confirmed unreferenced objects.
+Editors and administrators can delete a media object after a destructive
+confirmation. This removes both the MinIO object and its MySQL index row.
+Because an object can be referenced by multiple Markdown documents and there
+is no reference graph yet, verify shared links before confirming deletion.
 
 Changing a Draft or Archived item to Published refreshes `published_at` so archive ordering reflects the actual publication event. Unpublish moves an item to Draft without deleting it. Archive keeps the record and media references. Delete is permanent and requires confirmation.
 
