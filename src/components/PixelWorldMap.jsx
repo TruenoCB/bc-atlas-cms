@@ -41,6 +41,7 @@ export function PixelWorldMap({
   showLabels = true,
   animateFormation = true,
   landscapeFill = false,
+  pointerReactive = true,
   className = "",
 }) {
   const canvasRef = useRef(null);
@@ -176,8 +177,9 @@ export function PixelWorldMap({
       context.clearRect(0, 0, width, height);
 
       const pointer = pointerRef.current;
-      const globalX = pointer.active && !reducedMotionRef.current ? pointer.nx * 5 : 0;
-      const globalY = pointer.active && !reducedMotionRef.current ? pointer.ny * 3 : 0;
+      const pointerActive = pointerReactive && pointer.active && !reducedMotionRef.current;
+      const globalX = pointerActive ? pointer.nx * 5 : 0;
+      const globalY = pointerActive ? pointer.ny * 3 : 0;
 
       const formationAge = time - formationStartRef.current;
       for (const point of pointsRef.current) {
@@ -185,7 +187,7 @@ export function PixelWorldMap({
         const dy = point.y - pointer.y;
         const distance = Math.hypot(dx, dy);
         const influenceRadius = ambient ? 168 : 112;
-        const influence = pointer.active && !reducedMotionRef.current ? Math.max(0, 1 - distance / influenceRadius) : 0;
+        const influence = pointerActive ? Math.max(0, 1 - distance / influenceRadius) : 0;
         const wave = Math.sin(time * 0.003 + point.phase * Math.PI * 2);
         const gatherProgress = !animateFormation || reducedMotionRef.current
           ? 1
@@ -268,16 +270,17 @@ export function PixelWorldMap({
 
     frameRef.current = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(frameRef.current);
-  }, [ambient, animateFormation, expanded, hovered, mapped.length, selectedId, showLabels]);
+  }, [ambient, animateFormation, expanded, hovered, mapped.length, pointerReactive, selectedId, showLabels]);
 
   const locateMarker = (x, y) => {
     const pointer = pointerRef.current;
-    const globalX = pointer.active ? pointer.nx * 5 : 0;
-    const globalY = pointer.active ? pointer.ny * 3 : 0;
+    const globalX = pointerReactive && pointer.active ? pointer.nx * 5 : 0;
+    const globalY = pointerReactive && pointer.active ? pointer.ny * 3 : 0;
     return markersRef.current.find((marker) => Math.hypot(marker.x + globalX - x, marker.y + globalY - y) < 28);
   };
 
   const handlePointerMove = (event) => {
+    if (!pointerReactive) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
