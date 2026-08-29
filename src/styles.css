@@ -3930,6 +3930,7 @@ select:focus-visible {
   .editorial-collapsed .hero-layout {
     position: relative;
     height: auto;
+    min-height: calc(150svh - 114px);
     min-height: calc(150dvh - 114px);
     display: block;
     overflow: visible;
@@ -3942,6 +3943,7 @@ select:focus-visible {
     right: 0;
     bottom: 0;
     left: 0;
+    height: calc(50svh - 38px);
     height: calc(50dvh - 38px);
     border: 0;
     background: radial-gradient(circle at 52% 42%, rgba(165, 108, 255, .055), transparent 34%), #08090b;
@@ -3965,8 +3967,10 @@ select:focus-visible {
     position: relative;
     z-index: 3;
     width: 100%;
-    height: calc(100dvh - 76px);
+    height: auto;
+    min-height: calc(100svh - 76px);
     min-height: calc(100dvh - 76px);
+    margin-bottom: calc(50svh - 38px);
     margin-bottom: calc(50dvh - 38px);
     display: flex;
     padding: clamp(74px, 11dvh, 116px) clamp(24px, 6vw, 58px) 92px;
@@ -3975,7 +3979,7 @@ select:focus-visible {
       radial-gradient(circle at 76% 14%, rgba(165, 108, 255, .055), transparent 28%),
       linear-gradient(180deg, rgba(9, 10, 13, .99), rgba(8, 9, 11, .985));
     box-shadow: 0 34px 100px rgba(0, 0, 0, .74);
-    overflow: hidden;
+    overflow: visible;
     pointer-events: auto;
     transform: translateY(0);
     transition: box-shadow 300ms ease;
