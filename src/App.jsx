@@ -492,6 +492,7 @@ export function App() {
             clickable
             animateFormation={!editorialCollapsed && !portraitLayout}
             landscapeFill
+            pointerReactive={!portraitLayout}
           />
         </section>
       </main> : view === "Knowledge" ? (
