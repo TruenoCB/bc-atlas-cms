@@ -40,6 +40,7 @@ export function PixelWorldMap({
   clickable = Boolean(onSelect),
   showLabels = true,
   animateFormation = true,
+  landscapeFill = false,
   className = "",
 }) {
   const canvasRef = useRef(null);
@@ -65,12 +66,13 @@ export function PixelWorldMap({
     canvas.width = Math.max(1, Math.round(rect.width * ratio));
     canvas.height = Math.max(1, Math.round(rect.height * ratio));
 
+    const useLandscapeFill = landscapeFill && !expanded;
     const projection = expanded
       ? geoNaturalEarth1().fitExtent([[56, 54], [rect.width - 56, rect.height - 46]], globalCountries)
       : geoNaturalEarth1()
         .center([112, 4])
-        .scale(Math.min(rect.height * 0.325, rect.width * 0.37))
-        .translate([rect.width * 0.35, rect.height * 0.605]);
+        .scale(Math.min(rect.height * (useLandscapeFill ? 0.34 : 0.325), rect.width * 0.37))
+        .translate([rect.width * 0.35, rect.height * (useLandscapeFill ? 0.63 : 0.605)]);
     const focusPoint = expanded ? null : projection([139.6503, 35.6762]);
     const horizontalScale = expanded ? 1 : 1.15;
     const verticalScale = expanded ? 1 : 1.48;
@@ -127,7 +129,7 @@ export function PixelWorldMap({
     }).filter(Boolean);
     markersRef.current = markers;
     setMarkerButtons(markers);
-  }, [expanded, mapped]);
+  }, [expanded, landscapeFill, mapped]);
 
   useEffect(() => {
     reducedMotionRef.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -223,7 +225,10 @@ export function PixelWorldMap({
           context.fillRect(x - 4, y - 4, isActive ? 9 : 8, isActive ? 9 : 8);
         }
         context.shadowBlur = 0;
-        if (!showLabels) return;
+        // Dense archives remain legible: once the map contains more than a
+        // handful of notes, labels are revealed only for the active/hovered
+        // marker instead of becoming an unreadable block of text.
+        if (!showLabels || (mapped.length > 8 && !isActive)) return;
         const labelPrefix = marker.article.locked ? "MEMBER NOTE" : "FIELD NOTE";
         const label = `${labelPrefix} / ${marker.geo.locationName.toUpperCase()}`;
         context.font = "500 12px Inter, sans-serif";
@@ -263,7 +268,7 @@ export function PixelWorldMap({
 
     frameRef.current = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(frameRef.current);
-  }, [ambient, animateFormation, expanded, hovered, selectedId, showLabels]);
+  }, [ambient, animateFormation, expanded, hovered, mapped.length, selectedId, showLabels]);
 
   const locateMarker = (x, y) => {
     const pointer = pointerRef.current;

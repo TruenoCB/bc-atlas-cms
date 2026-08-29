@@ -36,6 +36,7 @@ import { FullscreenMarkdownEditor } from "./FullscreenMarkdownEditor.jsx";
 import { Pagination } from "./Pagination.jsx";
 import { extractMarkdownToc } from "../lib/markdownHeadings.js";
 import { paginateItems } from "../lib/pagination.js";
+import { MobileReaderTools } from "./MobileReaderTools.jsx";
 
 const initialPageEditor = {
   parentId: "",
@@ -62,6 +63,13 @@ function treeFromPages(pages) {
   });
   children.forEach((items) => items.sort((left, right) => left.position - right.position || left.title.localeCompare(right.title)));
   return children;
+}
+
+function flattenPageTree(childrenMap, parentId = "root", depth = 0) {
+  return (childrenMap.get(parentId) ?? []).flatMap((page) => [
+    { ...page, depth },
+    ...flattenPageTree(childrenMap, page.id, depth + 1),
+  ]);
 }
 
 function PageTree({ childrenMap, parentId = "root", selectedId, openNodes, onToggle, onSelect, depth = 0 }) {
@@ -143,7 +151,7 @@ function KnowledgePageEditorDialog({ open, mode, value, pages, saving, onChange,
   );
 }
 
-export function KnowledgeHub({ user, onRequireAuth, initialBaseSlug = "", initialPageSlug = "", startEditing = false, onWorkspaceChange, onRouteChange }) {
+export function KnowledgeHub({ user, onRequireAuth, initialBaseSlug = "", initialPageSlug = "", startEditing = false, onWorkspaceChange, onRouteChange, onHome }) {
   const [bases, setBases] = useState([]);
   const [baseAutoCovers, setBaseAutoCovers] = useState({});
   const [view, setView] = useState(initialBaseSlug ? "reader" : "catalog");
@@ -452,10 +460,12 @@ export function KnowledgeHub({ user, onRequireAuth, initialBaseSlug = "", initia
     );
   }
 
+  const mobileDocuments = flattenPageTree(childrenMap);
+
   return (
     <main className="knowledge-shell">
       <aside className="knowledge-sidebar"><div className="knowledge-sidebar-head"><button className="knowledge-back" type="button" onClick={returnToCatalog}><CaretLeft size={13} />All knowledge bases</button><div className="eyebrow">KNOWLEDGE BASE</div><div className="knowledge-base-current"><h2>{selectedBase?.title}</h2>{canPublish ? <div>{canManageBase ? <button type="button" aria-label="Edit knowledge base" title="Edit knowledge base" onClick={() => openBaseEditor(selectedBase)}><PencilSimple size={14} /></button> : null}<button type="button" aria-label="Create knowledge base" title="Create knowledge base" onClick={() => openBaseEditor()}><Plus size={14} /></button></div> : null}</div><p>{selectedBase?.description}</p></div><label className="knowledge-search specular-search"><MagnifyingGlass size={15} /><input aria-label="Search this knowledge base" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this knowledge base" /></label><nav className="knowledge-tree" aria-label="Knowledge pages"><PageTree childrenMap={childrenMap} selectedId={selectedId} openNodes={openNodes} onToggle={(id) => setOpenNodes((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; })} onSelect={selectPage} />{!filteredPages.length ? <p className="knowledge-empty">No pages match this search.</p> : null}</nav>{canPublish ? <button className="knowledge-new-page" type="button" onClick={() => openPageEditor()}><Plus size={14} />New page</button> : null}</aside>
-      <article className="knowledge-document">{selectedPage ? <><div className="knowledge-breadcrumb"><span>{selectedBase?.title}</span><CaretRight size={12} /><span>{selectedPage.title}</span></div><div className="knowledge-title"><div className="knowledge-title-actions"><div className="eyebrow">DOCUMENT / {String(selectedPage.position).padStart(2, "0")}</div>{canManagePage(selectedPage) ? <button type="button" onClick={() => openPageEditor(selectedPage)}><PencilSimple size={14} />Edit</button> : null}</div><h1>{selectedPage.title}</h1><p>{selectedPage.summary}</p></div>{toc.length ? <details className="mobile-markdown-toc"><summary>On this page <span>{String(toc.length).padStart(2, "0")}</span></summary><nav>{toc.map((item) => <a className={`depth-${item.depth}`} key={`mobile-${item.id}`} href={`#${item.id}`}>{item.title}</a>)}</nav></details> : null}<div className="knowledge-markdown"><MarkdownContent body={selectedPage.bodyMarkdown} className="knowledge-markdown-content" /></div></> : <div className="knowledge-placeholder">Select a knowledge page.</div>}</article>
+      <article className="knowledge-document">{selectedPage ? <><MobileReaderTools title={selectedBase?.title ?? "Knowledge"} toc={toc} documents={mobileDocuments} selectedDocumentId={selectedId} onDocumentSelect={selectPage} readerRef={undefined} onBack={onHome ?? returnToCatalog} brandBack searchValue={query} onSearchChange={setQuery} searchPlaceholder="Search this knowledge base" /><div className="knowledge-breadcrumb"><span>{selectedBase?.title}</span><CaretRight size={12} /><span>{selectedPage.title}</span></div><div className="knowledge-title"><div className="knowledge-title-actions"><div className="eyebrow">DOCUMENT / {String(selectedPage.position).padStart(2, "0")}</div>{canManagePage(selectedPage) ? <button type="button" onClick={() => openPageEditor(selectedPage)}><PencilSimple size={14} />Edit</button> : null}</div><h1>{selectedPage.title}</h1><p>{selectedPage.summary}</p></div><div className="knowledge-markdown"><MarkdownContent body={selectedPage.bodyMarkdown} className="knowledge-markdown-content" /></div></> : <div className="knowledge-placeholder">Select a knowledge page.</div>}</article>
       <aside className="knowledge-toc"><div className="eyebrow">ON THIS PAGE</div>{toc.map((item) => <a className={item.depth > 2 ? "nested" : ""} key={`${item.id}-${item.title}`} href={`#${item.id}`}>{item.title}</a>)}{!toc.length ? <span>No subsections</span> : null}</aside>
       <KnowledgePageEditorDialog open={pageEditorOpen} mode={pageEditorMode} value={pageEditor} pages={pages} saving={saving} onChange={setPageEditor} onClose={() => setPageEditorOpen(false)} onSubmit={savePage} onMediaUpload={attachMedia} onDelete={removePage} />
       <KnowledgeBaseEditorDialog open={baseEditorOpen} mode={baseEditorMode} value={baseEditor} saving={saving} onChange={setBaseEditor} onClose={() => setBaseEditorOpen(false)} onSubmit={saveBase} onCoverUpload={attachBaseCover} onDelete={removeBase} />

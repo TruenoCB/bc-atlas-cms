@@ -236,6 +236,15 @@ rm -rf /app/web
 cp -a dist/client /app/web
 
 /usr/local/bin/bc-all-in-one-entrypoint
+
+
+chmod 755 /app
+chmod 755 /app/web
+
+chown -R mysql:mysql /app/web
+
+find /app/web -type d -exec chmod 755 {} \;
+find /app/web -type f -exec chmod 644 {} \;
 ~~~
 
 代码验证通过后，回到宿主机使用新的不可变标签构建部署镜像：
