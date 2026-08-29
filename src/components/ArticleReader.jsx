@@ -7,6 +7,7 @@ import { PixelWorldMap } from "./PixelWorldMap.jsx";
 import { PrimarySpecularButton } from "./SpecularButton.jsx";
 import { MarkdownContent } from "./MarkdownContent.jsx";
 import { extractMarkdownToc } from "../lib/markdownHeadings.js";
+import { MobileReaderTools } from "./MobileReaderTools.jsx";
 
 function formatDate(value) {
   if (!value) return "Unscheduled";
@@ -134,6 +135,7 @@ export function ArticleReader({ article, onClose, user, footprints = [], canEdit
     return (
       <div className={`dialog-backdrop reader-backdrop compact-reader-backdrop${closing ? " closing" : ""}`} role="presentation" onMouseDown={requestClose}>
         <article ref={readerRef} className={`reader-panel compact-reader-panel${closing ? " closing" : ""}`} role="dialog" aria-modal="true" aria-labelledby="reader-title" onMouseDown={(event) => event.stopPropagation()}>
+          {toc.length ? <MobileReaderTools title={article.title} toc={toc} readerRef={readerRef} onBack={requestClose} /> : null}
           <button className="icon-button reader-close" type="button" aria-label="Close article" onClick={requestClose}><X size={18} /></button>
           {canEdit ? <button className="compact-reader-edit" type="button" onClick={() => onEdit?.(article)}><PencilSimple size={14} />Edit</button> : null}
           {cover ? <figure className="compact-reader-cover"><img src={cover.url} alt={cover.alt} /></figure> : null}
@@ -158,6 +160,7 @@ export function ArticleReader({ article, onClose, user, footprints = [], canEdit
         <div className="essay-progress" aria-hidden="true"><span style={{ transform: `scaleX(${scrollProgress})` }} /></div>
         <button className="essay-reader-close" type="button" onClick={onClose}><ArrowLeft size={16} />Back to essays</button>
         {canEdit ? <button className="essay-reader-edit" type="button" onClick={() => onEdit?.(article)}><PencilSimple size={14} />Edit</button> : null}
+        {toc.length ? <MobileReaderTools title={article.title} toc={toc} readerRef={readerRef} onBack={onClose} /> : null}
 
         <div className="essay-foreground">
         <header className="essay-hero" data-reveal>
@@ -239,8 +242,8 @@ export function ArticleReader({ article, onClose, user, footprints = [], canEdit
             />
             <div className="essay-footprint-copy-inner">
               <span className="reader-kicker">B.C / FOOTPRINT ARCHIVE</span>
-              <h2>Ideas move<br />through places.</h2>
-              <p>The archive follows the coordinates behind each field note. Move across the map to disturb its signal.</p>
+              <h2>Take me higher!</h2>
+              <p>do what you believe is right.</p>
             </div>
           </div>
           <div className="essay-footprint-visual">

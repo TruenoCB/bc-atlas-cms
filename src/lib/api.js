@@ -1,11 +1,20 @@
 import { seedFootprints } from "../data/seedFootprints.js";
 import { seedContents } from "../data/seedContents.js";
 import { seedKnowledgeBases, seedKnowledgePages } from "../data/seedKnowledge.js";
+import {
+  mockContents,
+  mockFootprints,
+  mockKnowledgeBases,
+  mockKnowledgePages,
+  mockMedia,
+} from "../data/mockCms.js";
 
 const STORAGE_KEY = "bc.cms.footprints.v1";
 // Seed records make the standalone Vite experience useful, but they must never
 // masquerade as a live site's data when a production API is unavailable.
 const allowDemoFallback = import.meta.env.DEV;
+const mockEnabled = import.meta.env.VITE_MOCK_DATA === "true";
+let mockMediaState = [...mockMedia];
 
 function readLocalFootprints() {
   try {
@@ -41,6 +50,7 @@ export class ApiError extends Error {
 }
 
 export async function listFootprints() {
+  if (mockEnabled) return mockFootprints;
   try {
     const payload = await request("/api/footprints");
     return payload.items ?? payload;
@@ -51,10 +61,18 @@ export async function listFootprints() {
 }
 
 export async function getContent(slug) {
+  if (mockEnabled) {
+    const item = mockContents.find((content) => content.slug === slug);
+    if (!item) throw new ApiError("Content not found", 404);
+    return item;
+  }
   return request(`/api/contents/${encodeURIComponent(slug)}`);
 }
 
 export async function listContents(filters = {}) {
+  if (mockEnabled) return mockContents.filter((item) => (!filters.type || item.type === filters.type)
+    && (!filters.tag || item.tags?.some((tag) => tag.slug === filters.tag))
+    && (!filters.status || filters.status === "all" || item.status === filters.status));
   const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
   try {
     const payload = await request(`/api/contents${query.size ? `?${query}` : ""}`);
@@ -80,6 +98,7 @@ export async function deleteContent(slug) {
 }
 
 export async function listComments(slug) {
+  if (mockEnabled) return [];
   const payload = await request(`/api/contents/${encodeURIComponent(slug)}/comments`);
   return payload.items ?? [];
 }
@@ -102,6 +121,14 @@ export async function listMedia(filters = {}) {
 }
 
 export async function listMediaPage(filters = {}) {
+  if (mockEnabled) {
+    const page = Math.max(1, Number(filters.page) || 1);
+    const pageSize = Math.max(1, Number(filters.pageSize) || 100);
+    const needle = String(filters.query || filters.search || "").trim().toLowerCase();
+    const filtered = needle ? mockMediaState.filter((item) => `${item.originalName} ${item.objectKey} ${item.contentType}`.toLowerCase().includes(needle)) : mockMediaState;
+    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+    return { items: filtered.slice((page - 1) * pageSize, page * pageSize), pagination: { page, pageSize, total: filtered.length, totalPages } };
+  }
   const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
   const payload = await request(`/api/media${query.size ? `?${query}` : ""}`);
   return {
@@ -111,6 +138,10 @@ export async function listMediaPage(filters = {}) {
 }
 
 export async function deleteMedia(id) {
+  if (mockEnabled) {
+    mockMediaState = mockMediaState.filter((item) => item.id !== id);
+    return null;
+  }
   return request(`/api/media/${encodeURIComponent(id)}`, { method: "DELETE", body: "{}" });
 }
 
@@ -142,6 +173,7 @@ export async function createFootprint(input) {
 }
 
 export async function getSession() {
+  if (mockEnabled) return null;
   const payload = await request("/api/auth/me");
   return payload.user ?? null;
 }
@@ -161,6 +193,7 @@ export async function logout() {
 }
 
 export async function listKnowledgeBases() {
+  if (mockEnabled) return mockKnowledgeBases;
   try {
     const payload = await request("/api/knowledge-bases");
     return payload.items ?? [];
@@ -175,6 +208,11 @@ export async function createKnowledgeBase(input) {
 }
 
 export async function getKnowledgeBase(baseSlug) {
+  if (mockEnabled) {
+    const item = mockKnowledgeBases.find((base) => base.slug === baseSlug);
+    if (!item) throw new ApiError("Knowledge base not found", 404);
+    return item;
+  }
   return request(`/api/knowledge-bases/${encodeURIComponent(baseSlug)}`);
 }
 
@@ -187,6 +225,7 @@ export async function deleteKnowledgeBase(baseSlug) {
 }
 
 export async function listKnowledgePages(baseSlug) {
+  if (mockEnabled) return mockKnowledgePages.filter((page) => page.knowledgeBaseSlug === baseSlug);
   try {
     const payload = await request(`/api/knowledge-bases/${encodeURIComponent(baseSlug)}/pages`);
     return payload.items ?? [];
@@ -197,6 +236,11 @@ export async function listKnowledgePages(baseSlug) {
 }
 
 export async function getKnowledgePage(baseSlug, pageSlug) {
+  if (mockEnabled) {
+    const item = mockKnowledgePages.find((page) => page.knowledgeBaseSlug === baseSlug && page.slug === pageSlug);
+    if (!item) throw new ApiError("Knowledge page not found", 404);
+    return item;
+  }
   return request(`/api/knowledge-bases/${encodeURIComponent(baseSlug)}/pages/${encodeURIComponent(pageSlug)}`);
 }
 

@@ -39,6 +39,17 @@ npm run dev:api
 
 The frontend is available at `http://localhost:4173` and proxies `/api` and `/rss.xml` to the Go server on port `8080`. `dev:api` explicitly enables the seeded in-memory repository for UI development only. A deployed application requires `DATABASE_DSN`; it will not silently start with demo records when the database configuration is missing.
 
+### Frontend-only mock mode
+
+To inspect the complete responsive frontend without starting Go, MySQL, or MinIO:
+
+```bash
+npm install
+npm run dev:mock -- --host 127.0.0.1 --port 4173
+```
+
+Open `http://127.0.0.1:4173/`. Mock mode is enabled only by `.env.mock`; normal development and production still use the real same-origin API. The deterministic generator in `src/data/mockCms.js` provides 100 essays, thoughts, galleries, videos, field notes, knowledge bases, knowledge pages, and media records. It also provides multi-level Markdown headings and global coordinates so reader navigation, catalog pagination, search, and dense-map behavior can be tested without a backend.
+
 ## One-command Docker deployment
 
 ```bash
