@@ -531,7 +531,7 @@ export function App() {
           onClose={() => setPublisherOpen(false)}
           onSubmit={saveContent}
         />
-        <ArticleReader article={readerArticle} onClose={closeArticle} user={user} footprints={footprints} canEdit={Boolean(user && readerArticle && (user.role === "admin" || readerArticle.authorId === user.id))} onEdit={(article) => { setReaderArticle(null); openPublisher("edit", article); }} />
+        <ArticleReader article={readerArticle} onClose={closeArticle} user={user} footprints={footprints} canEdit={Boolean(user && readerArticle && (user.role === "admin" || readerArticle.authorId === user.id))} onEdit={(article) => { setReaderArticle(null); syncBrowserRoute(routeForView(view), { replace: true }); openPublisher("edit", article); }} />
       </Suspense>
       <AuthDialog open={signInOpen} reason={authReason} onClose={() => setSignInOpen(false)} onAuthenticated={authenticated} />
     </div>
